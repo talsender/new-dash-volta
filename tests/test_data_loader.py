@@ -1,6 +1,7 @@
 import pytest, pandas as pd, tempfile, os
 from modules.data_loader import parse_attendance
 from modules.data_loader import parse_voicenter
+from modules.data_loader import parse_feedback
 
 
 def _make_attendance(rows):
@@ -70,5 +71,33 @@ def test_parse_voicenter_occupancy_as_float():
     try:
         df = parse_voicenter(path)
         assert df.iloc[0]['אחוז תעסוקה נטו'] == pytest.approx(0.35)
+    finally:
+        os.unlink(path)
+
+
+def _make_feedback(agent_scores: dict):
+    f = tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False)
+    with pd.ExcelWriter(f.name, engine='openpyxl') as w:
+        for name, score in agent_scores.items():
+            pd.DataFrame([['ציון משוב', score], ['פרמטר 2', 7.0]]).to_excel(
+                w, sheet_name=name, index=False, header=False)
+    return f.name
+
+
+def test_parse_feedback_returns_scores():
+    path = _make_feedback({"טום סורסקי": 8.52, "אלינור": 8.5})
+    try:
+        result = parse_feedback(path)
+        assert result["טום סורסקי"] == pytest.approx(8.52)
+        assert result["אלינור"] == pytest.approx(8.5)
+    finally:
+        os.unlink(path)
+
+
+def test_parse_feedback_missing_agent_is_absent():
+    path = _make_feedback({"טום סורסקי": 8.52})
+    try:
+        result = parse_feedback(path)
+        assert result.get("אלינור") is None
     finally:
         os.unlink(path)

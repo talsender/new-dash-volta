@@ -22,3 +22,16 @@ def parse_voicenter(filepath: str) -> pd.DataFrame:
                           .pipe(pd.to_numeric, errors='coerce') / 100)
     df['נענו'] = pd.to_numeric(df['נענו'], errors='coerce').fillna(0).astype(int)
     return df.reset_index(drop=True)
+
+
+def parse_feedback(filepath: str) -> dict:
+    scores = {}
+    with pd.ExcelFile(filepath, engine='openpyxl') as xl:
+        for sheet in xl.sheet_names:
+            df = xl.parse(sheet, header=None)
+            mask = df.iloc[:, 0].astype(str).str.contains('ציון משוב', na=False)
+            if mask.any():
+                score = pd.to_numeric(df.iloc[mask.idxmax(), 1], errors='coerce')
+                if not pd.isna(score):
+                    scores[sheet] = float(score)
+    return scores
