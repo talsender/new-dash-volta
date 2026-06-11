@@ -1,7 +1,4 @@
 # app.py
-import sys
-sys.stdout.reconfigure(encoding='utf-8')
-
 import streamlit as st
 
 st.set_page_config(
