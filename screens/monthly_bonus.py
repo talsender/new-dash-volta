@@ -9,6 +9,7 @@ from modules.config_manager import load_agents, load_settings
 from modules.email_builder import (build_monthly_client_email, build_monthly_agent_email)
 from modules.email_sender import send_email
 from modules.excel_exporter import export_monthly_bonus
+from modules.history_manager import save_month
 
 
 def _save_upload(uploaded, suffix):
@@ -109,6 +110,29 @@ def render():
         "משוב ₪": b["feedback_bonus"], "פניקס ₪": b["phoenix_bonus"],
         "סה\"כ ₪": b["total"],
     } for b in bonus_data], use_container_width=True)
+
+    if st.button("💾 שמור חודש להיסטוריה"):
+        snapshot = {
+            "month": month_label[:7] if len(month_label) >= 7 else month_label,
+            "label": month_label,
+            "center_rate": center_rate,
+            "center_met_target": center_meets,
+            "manager_bonus": manager_bonus,
+            "total_billing": billing["phoenix_billing"],
+            "agents": [{
+                "name": k["name"],
+                "hours": k["hours"],
+                "meetings": k["meetings"],
+                "meetings_per_hour": k["meetings_per_hour"],
+                "occupancy_pct": k["occupancy_pct"],
+                "idle_pct": k["idle_pct"],
+                "feedback_score": k["feedback_score"],
+                "phoenix": k["phoenix"],
+                "bonus_total": b["total"],
+            } for k, b in zip(kpi_data, bonus_data)]
+        }
+        save_month(snapshot)
+        st.success(f"חודש {month_label} נשמר להיסטוריה ✅")
 
     with tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False) as f:
         xl_path = f.name
