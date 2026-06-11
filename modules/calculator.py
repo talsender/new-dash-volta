@@ -52,3 +52,23 @@ def calculate_feedback_bonus(score) -> float:
     if score >= 8.0:
         return 100
     return 0
+
+
+def calculate_agent_bonus(kpi: dict, center_meets: bool, settings: dict) -> dict:
+    t = settings["bonus_thresholds"]
+    m = calculate_meetings_bonus(kpi["meetings"], kpi["individual_rate"], center_meets)
+    o = calculate_occupancy_bonus(kpi["occupancy_pct"])
+    i = calculate_idle_bonus(kpi["idle_pct"])
+    fb = calculate_feedback_bonus(kpi.get("feedback_score"))
+    ph = kpi["phoenix"] * t["phoenix_employee_rate"]
+    return {"meetings_bonus": m, "occupancy_bonus": o, "idle_bonus": i,
+            "feedback_bonus": fb, "phoenix_bonus": ph, "total": m + o + i + fb + ph}
+
+
+def calculate_manager_bonus(center_rate: float, settings: dict) -> float:
+    t = settings["bonus_thresholds"]
+    if center_rate >= t["manager_bonus_a_rate"]:
+        return t["manager_bonus_a"]
+    if center_rate >= t["manager_bonus_b_rate"]:
+        return t["manager_bonus_b"]
+    return t["manager_bonus_c"]

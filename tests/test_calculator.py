@@ -112,3 +112,35 @@ def test_feedback_none_score():
     assert calculate_feedback_bonus(None) == 0
 def test_feedback_below():
     assert calculate_feedback_bonus(7.9) == 0
+
+
+# ── Task 8: Full bonus report ─────────────────────────────
+from modules.calculator import calculate_agent_bonus, calculate_manager_bonus
+
+def _settings():
+    return {"bonus_thresholds": {
+        "phoenix_employee_rate": 50, "phoenix_client_rate": 100,
+        "manager_bonus_a_rate": 1.0, "manager_bonus_a": 2000,
+        "manager_bonus_b_rate": 0.8, "manager_bonus_b": 1600,
+        "manager_bonus_c": 1200,
+    }}
+
+def test_calculate_agent_bonus_full():
+    kpi = {"meetings": 80, "individual_rate": 1.1, "occupancy_pct": 0.36,
+           "idle_pct": 0.015, "feedback_score": 8.52, "phoenix": 3}
+    result = calculate_agent_bonus(kpi, center_meets=True, settings=_settings())
+    assert result["meetings_bonus"] == 480    # (5+1)×80
+    assert result["occupancy_bonus"] == 300
+    assert result["idle_bonus"] == 150
+    assert result["feedback_bonus"] == 150
+    assert result["phoenix_bonus"] == 150    # 3×50
+    assert result["total"] == 1230
+
+def test_calculate_manager_bonus_tier_a():
+    assert calculate_manager_bonus(1.05, _settings()) == 2000
+
+def test_calculate_manager_bonus_tier_b():
+    assert calculate_manager_bonus(0.85, _settings()) == 1600
+
+def test_calculate_manager_bonus_tier_c():
+    assert calculate_manager_bonus(0.75, _settings()) == 1200
