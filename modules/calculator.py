@@ -20,3 +20,35 @@ def calculate_center_rate(agents: list) -> float:
     if not active:
         return 0.0
     return sum(a["meetings"] for a in active) / sum(a["hours"] for a in active)
+
+
+def calculate_meetings_bonus(meetings: int, individual_rate: float, center_meets: bool) -> float:
+    base = 5 if individual_rate >= 1.0 else 4
+    extra = 1 if center_meets else 0
+    return meetings * (base + extra)
+
+
+def calculate_occupancy_bonus(occupancy_pct: float) -> float:
+    if occupancy_pct >= 0.35:
+        return 300
+    if occupancy_pct >= 0.30:
+        return 200
+    return 0
+
+
+def calculate_idle_bonus(idle_pct: float) -> float:
+    if idle_pct <= 0.02:
+        return 150
+    if idle_pct <= 0.03:
+        return 100
+    return 0
+
+
+def calculate_feedback_bonus(score) -> float:
+    if score is None:
+        return 0
+    if score >= 8.5:
+        return 150
+    if score >= 8.0:
+        return 100
+    return 0
