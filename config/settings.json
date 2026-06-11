@@ -1,0 +1,37 @@
+{
+  "bonus_thresholds": {
+    "meetings_per_hour_tier_a": 1.0,
+    "meetings_per_hour_tier_a_rate": 5,
+    "meetings_per_hour_tier_b_rate": 4,
+    "center_target_bonus_per_meeting": 1,
+    "occupancy_tier_a_pct": 35,
+    "occupancy_tier_a_bonus": 300,
+    "occupancy_tier_b_pct": 30,
+    "occupancy_tier_b_bonus": 200,
+    "idle_tier_a_pct": 2,
+    "idle_tier_a_bonus": 150,
+    "idle_tier_b_pct": 3,
+    "idle_tier_b_bonus": 100,
+    "feedback_tier_a_score": 8.5,
+    "feedback_tier_a_bonus": 150,
+    "feedback_tier_b_score": 8.0,
+    "feedback_tier_b_bonus": 100,
+    "phoenix_employee_rate": 50,
+    "phoenix_client_rate": 100,
+    "manager_bonus_a_rate": 1.0,
+    "manager_bonus_a": 2000,
+    "manager_bonus_b_rate": 0.8,
+    "manager_bonus_b": 1600,
+    "manager_bonus_c": 1200
+  },
+  "smtp": {
+    "host": "",
+    "port": 587,
+    "username": "",
+    "from_email": ""
+  },
+  "recipients": {
+    "management": [],
+    "client": []
+  }
+}
