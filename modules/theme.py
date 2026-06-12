@@ -42,16 +42,22 @@ body { direction: rtl !important; }
 * { font-family: 'Heebo', 'Arial Hebrew', Arial, sans-serif !important; box-sizing: border-box; }
 
 /* Streamlit 1.35+ renders icon names (e.g. "keyboard_arrow_right") as
-   text inside stIconMaterial spans, relying on Material Symbols font
-   ligatures. That font does not load reliably, so we hide the raw text
-   entirely and replace expander toggles with a pure-CSS arrow. */
+   text inside stIconMaterial spans. The icon font does not load so the
+   raw text is visible. We use the sr-only + clip-path technique to
+   visually erase the element entirely without removing it from the DOM. */
 [data-testid="stIconMaterial"] {
-  font-size:   0 !important;
-  line-height: 0 !important;
-  user-select: none !important;
-  overflow:    hidden !important;
-  width:       0 !important;
-  display:     inline-block !important;
+  position:   absolute !important;
+  width:      1px     !important;
+  height:     1px     !important;
+  padding:    0       !important;
+  margin:     -1px    !important;
+  overflow:   hidden  !important;
+  clip:       rect(0,0,0,0) !important;
+  clip-path:  inset(50%) !important;
+  white-space: nowrap  !important;
+  border:     0       !important;
+  font-size:  0       !important;
+  color:      transparent !important;
 }
 
 /* ══════════════════════════════════════════════
@@ -351,6 +357,8 @@ details summary {
   display: flex !important;
   align-items: center !important;
   gap: 10px !important;
+  position: relative !important;
+  overflow: visible !important;
 }
 /* CSS arrow — replaces the hidden stIconMaterial text */
 [data-testid="stExpander"] summary::before {
