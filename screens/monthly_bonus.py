@@ -12,6 +12,8 @@ from modules.excel_exporter import export_monthly_bonus, export_agent_bonus
 from modules.history_manager import save_month
 from modules import ui
 
+_SS_KEY = "mb_results"
+
 
 def _save_upload(uploaded, suffix):
     f = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
@@ -20,24 +22,16 @@ def _save_upload(uploaded, suffix):
 
 
 def _get_feedback(scores: dict, agent_name: str, feedback_name: str = None):
-    """Return feedback score for an agent.
-
-    Uses feedback_name (exact sheet name from agents.json) when provided.
-    Falls back to fuzzy matching by agent_name if not set.
-    """
     if not scores:
         return None
-    # 1. exact match via configured feedback_name
     if feedback_name:
         fb = feedback_name.strip()
         if fb in scores:
             return scores[fb]
-        # case-insensitive exact
         fb_l = fb.lower()
         for key, val in scores.items():
             if key.strip().lower() == fb_l:
                 return val
-    # 2. fuzzy fallback by agent full name
     name = agent_name.strip()
     if name in scores:
         return scores[name]
@@ -55,33 +49,18 @@ def _get_feedback(scores: dict, agent_name: str, feedback_name: str = None):
 def render():
     ui.page_header("בונוסים חודשיים", icon="💰", subtitle="חישוב בונוסים, Excel ושליחת מיילים")
 
-    agents = [a for a in load_agents() if a["active"]]
+    agents   = [a for a in load_agents() if a["active"]]
     settings = load_settings()
-    t = settings["bonus_thresholds"]
+    t        = settings["bonus_thresholds"]
 
+    # ── Step 1: file upload ──────────────────────────────────────────────────
     ui.section_header("העלאת קבצים", step=1)
     c1, c2, c3 = st.columns(3)
-    att_file = c1.file_uploader("נוכחות (.xlsx)", type=['xlsx'], key="b_att")
-    vc_file  = c2.file_uploader("Voicenter (.xls)", type=['xls','xlsx'], key="b_vc")
-    fb_file  = c3.file_uploader("משובים (.xlsx) — אופציונלי", type=['xlsx'], key="b_fb")
-    if not att_file or not vc_file:
-        st.info("נא להעלות לפחות קבצי נוכחות ו-Voicenter")
-        return
+    att_file = c1.file_uploader("נוכחות (.xlsx)",                  type=['xlsx'],          key="b_att")
+    vc_file  = c2.file_uploader("Voicenter (.xls)",                type=['xls','xlsx'],    key="b_vc")
+    fb_file  = c3.file_uploader("משובים (.xlsx) — אופציונלי",     type=['xlsx'],          key="b_fb")
 
-    att_path = _save_upload(att_file, '.xlsx')
-    vc_path  = _save_upload(vc_file, '.xls')
-    fb_path  = _save_upload(fb_file, '.xlsx') if fb_file else None
-    try:
-        att_df = parse_attendance(att_path)
-        vc_df  = parse_voicenter(vc_path)
-        feedback_scores = parse_feedback(fb_path) if fb_path else {}
-    except Exception as e:
-        st.error(f"שגיאה בקריאת קבצים: {e}")
-        return
-    finally:
-        for p in [att_path, vc_path, fb_path]:
-            if p: os.unlink(p)
-
+    # ── Step 2: manual input ─────────────────────────────────────────────────
     ui.section_header("הזנה ידנית", step=2)
     month_label = st.text_input("חודש", "יוני 2026")
     manual = {}
@@ -99,50 +78,96 @@ def render():
                 "idle_calls": st.number_input("שיחות סרק", min_value=0, key=f"bi_{agent['id']}"),
             }
 
-    if not st.button("חשב בונוסים"):
+    # ── Compute button ───────────────────────────────────────────────────────
+    if att_file and vc_file:
+        if st.button("חשב בונוסים"):
+            att_path = _save_upload(att_file, '.xlsx')
+            vc_path  = _save_upload(vc_file, '.xls')
+            fb_path  = _save_upload(fb_file, '.xlsx') if fb_file else None
+            try:
+                att_df          = parse_attendance(att_path)
+                vc_df           = parse_voicenter(vc_path)
+                feedback_scores = parse_feedback(fb_path) if fb_path else {}
+            except Exception as e:
+                st.error(f"שגיאה בקריאת קבצים: {e}")
+                return
+            finally:
+                for p in [att_path, vc_path, fb_path]:
+                    if p: os.unlink(p)
+
+            kpi_data = []
+            for agent in agents:
+                hours  = calculate_work_hours(att_df, agent["employee_id"])
+                inp    = manual[agent["id"]]
+                vc_name = agent.get('voicenter_name') or agent['name']
+                vc_row = vc_df[vc_df['משתמש'].str.lower().str.contains(vc_name.lower(), na=False, regex=False)]
+                if not len(vc_row):
+                    first_name = agent['name'].split()[0]
+                    vc_row = vc_df[vc_df['משתמש'].str.contains(first_name, na=False, regex=False)]
+                answered = int(vc_row['נענו'].iloc[0])           if len(vc_row) else 0
+                occ_pct  = float(vc_row['אחוז תעסוקה נטו'].iloc[0]) if len(vc_row) else 0.0
+                kpi_data.append({
+                    "agent_id": agent["id"], "name": agent["name"],
+                    "employee_id": agent["employee_id"], "email": agent.get("email", ""),
+                    "hours": hours, "meetings": inp["meetings"],
+                    "meetings_per_hour": calculate_meetings_per_hour(inp["meetings"], hours),
+                    "occupancy_pct": occ_pct, "idle_calls": inp["idle_calls"],
+                    "idle_pct": calculate_idle_pct(inp["idle_calls"], answered),
+                    "phoenix": inp["phoenix"],
+                    "feedback_score": _get_feedback(feedback_scores, agent["name"],
+                                                    feedback_name=agent.get("feedback_name")),
+                })
+
+            center_rate  = calculate_center_rate([{"hours": k["hours"], "meetings": k["meetings"]} for k in kpi_data])
+            center_meets = center_rate >= t["meetings_per_hour_tier_a"]
+
+            bonus_data = []
+            for k in kpi_data:
+                kpi_in = {"meetings": k["meetings"], "individual_rate": k["meetings_per_hour"],
+                          "occupancy_pct": k["occupancy_pct"], "idle_pct": k["idle_pct"],
+                          "feedback_score": k["feedback_score"], "phoenix": k["phoenix"]}
+                b = calculate_agent_bonus(kpi_in, center_meets, settings)
+                bonus_data.append({"name": k["name"], "employee_id": k["employee_id"], **b})
+
+            manager_bonus = calculate_manager_bonus(center_rate, settings)
+            total_phoenix = sum(k["phoenix"] for k in kpi_data)
+            billing = {
+                "hours_by_agent": {k["name"]: k["hours"] for k in kpi_data},
+                "total_hours":    sum(k["hours"] for k in kpi_data),
+                "phoenix_count":  total_phoenix,
+                "phoenix_billing": total_phoenix * t["phoenix_client_rate"],
+            }
+
+            # Store all results in session_state so subsequent button clicks
+            # (save, email, download) don't lose the computed data.
+            st.session_state[_SS_KEY] = {
+                "kpi_data":     kpi_data,
+                "bonus_data":   bonus_data,
+                "center_rate":  center_rate,
+                "center_meets": center_meets,
+                "manager_bonus": manager_bonus,
+                "billing":      billing,
+                "month_label":  month_label,
+            }
+
+    elif _SS_KEY not in st.session_state:
+        st.info("נא להעלות לפחות קבצי נוכחות ו-Voicenter")
         return
 
-    kpi_data = []
-    for agent in agents:
-        hours = calculate_work_hours(att_df, agent["employee_id"])
-        inp = manual[agent["id"]]
-        vc_name = agent.get('voicenter_name') or agent['name']
-        vc_row = vc_df[vc_df['משתמש'].str.lower().str.contains(vc_name.lower(), na=False, regex=False)]
-        if not len(vc_row):
-            first_name = agent['name'].split()[0]
-            vc_row = vc_df[vc_df['משתמש'].str.contains(first_name, na=False, regex=False)]
-        answered = int(vc_row['נענו'].iloc[0]) if len(vc_row) else 0
-        occ_pct  = float(vc_row['אחוז תעסוקה נטו'].iloc[0]) if len(vc_row) else 0.0
-        kpi_data.append({
-            "agent_id": agent["id"], "name": agent["name"],
-            "employee_id": agent["employee_id"], "email": agent.get("email", ""),
-            "hours": hours, "meetings": inp["meetings"],
-            "meetings_per_hour": calculate_meetings_per_hour(inp["meetings"], hours),
-            "occupancy_pct": occ_pct, "idle_calls": inp["idle_calls"],
-            "idle_pct": calculate_idle_pct(inp["idle_calls"], answered),
-            "phoenix": inp["phoenix"],
-            "feedback_score": _get_feedback(feedback_scores, agent["name"],
-                                              feedback_name=agent.get("feedback_name")),
-        })
+    if _SS_KEY not in st.session_state:
+        return
 
-    center_rate  = calculate_center_rate([{"hours": k["hours"], "meetings": k["meetings"]} for k in kpi_data])
-    center_meets = center_rate >= t["meetings_per_hour_tier_a"]
+    # ── Restore computed results from session_state ──────────────────────────
+    res          = st.session_state[_SS_KEY]
+    kpi_data     = res["kpi_data"]
+    bonus_data   = res["bonus_data"]
+    center_rate  = res["center_rate"]
+    center_meets = res["center_meets"]
+    manager_bonus = res["manager_bonus"]
+    billing      = res["billing"]
+    month_label  = res["month_label"]
 
-    bonus_data = []
-    for k in kpi_data:
-        kpi_in = {"meetings": k["meetings"], "individual_rate": k["meetings_per_hour"],
-                  "occupancy_pct": k["occupancy_pct"], "idle_pct": k["idle_pct"],
-                  "feedback_score": k["feedback_score"], "phoenix": k["phoenix"]}
-        b = calculate_agent_bonus(kpi_in, center_meets, settings)
-        bonus_data.append({"name": k["name"], "employee_id": k["employee_id"], **b})
-
-    manager_bonus = calculate_manager_bonus(center_rate, settings)
-    total_phoenix = sum(k["phoenix"] for k in kpi_data)
-    billing = {"hours_by_agent": {k["name"]: k["hours"] for k in kpi_data},
-               "total_hours": sum(k["hours"] for k in kpi_data),
-               "phoenix_count": total_phoenix,
-               "phoenix_billing": total_phoenix * t["phoenix_client_rate"]}
-
+    # ── Step 3: results ──────────────────────────────────────────────────────
     ui.section_header("תוצאות", step=3)
     c_a, c_b = st.columns(2)
     c_a.metric("קצב מוקד", f"{center_rate:.2f}/שעה",
@@ -177,7 +202,7 @@ def render():
         save_month(snapshot)
         st.success(f"חודש {month_label} נשמר להיסטוריה ✅")
 
-    # ── per-agent cards ──────────────────────────────────────────────────────
+    # ── Per-agent cards ──────────────────────────────────────────────────────
     st.markdown("---")
     ui.section_header("פירוט לנציגים")
     for k, b in zip(kpi_data, bonus_data):
@@ -211,7 +236,7 @@ def render():
                 )
             os.unlink(af_path)
 
-    # ── center Excel download ────────────────────────────────────────────────
+    # ── Center Excel download ────────────────────────────────────────────────
     st.markdown("---")
     with tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False) as f:
         xl_path = f.name
@@ -225,6 +250,7 @@ def render():
     st.download_button("הורד Excel מוקד מלא", xl_bytes, file_name=f"bonuses_{month_label}.xlsx")
     os.unlink(xl_path)
 
+    # ── Step 4: email ────────────────────────────────────────────────────────
     ui.section_header("שליחת מיילים", step=4)
     client_html = build_monthly_client_email(billing, month_label)
     with st.expander("תצוגה מקדימה — מייל ללקוח", key="exp_client_preview"):
@@ -234,9 +260,9 @@ def render():
     if not confirmed:
         return
 
-    smtp = settings["smtp"]
+    smtp     = settings["smtp"]
     password = st.secrets.get("SMTP_PASSWORD", "")
-    c1, c2 = st.columns(2)
+    c1, c2   = st.columns(2)
     with c1:
         if st.button("שלח ללקוח (וולטה) + Excel"):
             with tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False) as f:
