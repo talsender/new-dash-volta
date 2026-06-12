@@ -96,8 +96,8 @@ def render():
 
     col_refresh, _ = st.columns([1, 4])
     if col_refresh.button("🔄 רענן היסטוריה"):
-        if "__history_data__" in st.session_state:
-            del st.session_state["__history_data__"]
+        if "kpi_history" in st.session_state:
+            del st.session_state["kpi_history"]
         st.rerun()
 
     history = load_history()
