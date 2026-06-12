@@ -2,9 +2,20 @@ import pandas as pd
 
 
 def parse_attendance(filepath: str) -> pd.DataFrame:
-    df = pd.read_excel(filepath, sheet_name='וולטה סולאר', engine='openpyxl')
-    df['מספר עובד'] = pd.to_numeric(df['מספר עובד'], errors='coerce').astype('Int64')
-    df['סה"כ כללי'] = pd.to_numeric(df['סה"כ כללי'], errors='coerce').fillna(0.0)
+    xl = pd.ExcelFile(filepath, engine='openpyxl')
+    sheet = next((s for s in xl.sheet_names if 'וולטה' in s), xl.sheet_names[0])
+    df = xl.parse(sheet)
+    df.columns = [str(c).strip() for c in df.columns]
+    # find employee-id column flexibly
+    emp_col = next((c for c in df.columns if 'מספר' in c and 'עובד' in c), None)
+    if emp_col is None:
+        raise KeyError(f"לא נמצאה עמודת 'מספר עובד'. עמודות קיימות: {list(df.columns)}")
+    df['מספר עובד'] = pd.to_numeric(df[emp_col], errors='coerce').astype('Int64')
+    # find total-hours column flexibly
+    hours_col = next((c for c in df.columns if 'סה"כ' in c or 'סהכ' in c or 'כללי' in c), None)
+    if hours_col is None:
+        raise KeyError(f"לא נמצאה עמודת סה\"כ שעות. עמודות קיימות: {list(df.columns)}")
+    df['סה"כ כללי'] = pd.to_numeric(df[hours_col], errors='coerce').fillna(0.0)
     return df
 
 
