@@ -22,13 +22,19 @@ def _save_upload(uploaded, suffix):
 def _get_feedback(scores: dict, agent_name: str):
     if not scores:
         return None
-    # exact match
-    if agent_name in scores:
-        return scores[agent_name]
-    # sheet name is a first-name substring of the agent name
-    first = agent_name.split()[0]
+    name = agent_name.strip()
+    if name in scores:
+        return scores[name]
+    # case-insensitive, whitespace-stripped
+    name_l  = name.lower()
+    first_l = name.split()[0].lower()
     for key, val in scores.items():
-        if first in key or key in agent_name:
+        key_l = key.strip().lower()
+        # "אלינור" in "אלינור אדזיאשוילי"  or  "perry" in "perry yavdayev"
+        if key_l in name_l or name_l in key_l:
+            return val
+        # first word of agent matches sheet (handles "פרי" ↔ "פרי יבדייב")
+        if first_l == key_l or key_l.startswith(first_l) or first_l.startswith(key_l):
             return val
     return None
 
@@ -161,7 +167,7 @@ def render():
     st.markdown("---")
     ui.section_header("פירוט לנציגים")
     for k, b in zip(kpi_data, bonus_data):
-        with st.expander(f"📋  {k['name']}  —  סה\"כ ₪{b['total']:,}"):
+        with st.expander(f"{k['name']}  —  סה\"כ ₪{b['total']:,}"):
             c1, c2, c3, c4, c5 = st.columns(5)
             c1.metric("שעות",        f"{k['hours']:.1f}")
             c2.metric("תיאומים",     k["meetings"])

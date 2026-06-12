@@ -114,7 +114,7 @@ def parse_feedback(filepath: str) -> dict:
             if not row:
                 continue
             label = str(row[0]).strip() if row[0] is not None else ""
-            if label in ('ציון משוב', 'ציון האזנה'):
+            if label and ('ציון' in label):
                 # find first numeric value in the row (column index >= 1)
                 for cell in row[1:]:
                     try:
