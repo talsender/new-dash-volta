@@ -40,6 +40,16 @@ def render():
     finally:
         os.unlink(att_path); os.unlink(vc_path)
 
+    with st.expander("🔍 אבחון — נתונים שנקראו מהקבצים"):
+        st.write("**נוכחות — עמודות:**", list(att_df.columns))
+        st.write("**נוכחות — שורות לדוגמה:**")
+        st.dataframe(att_df.head(5))
+        st.write("**Voicenter — עמודות:**", list(vc_df.columns))
+        st.write("**Voicenter — שורות לדוגמה:**")
+        st.dataframe(vc_df.head(5))
+        st.write("**מספרי עובד מהקבצים:**", list(att_df['מספר עובד'].unique()))
+        st.write("**מספרי עובד מהגדרות:**", [a['employee_id'] for a in agents])
+
     st.subheader("2. הזנה ידנית")
     week_label = st.text_input("תיאור שבוע", "שבוע X — יוני 2026")
     manual = {}
