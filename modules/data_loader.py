@@ -1,26 +1,56 @@
 import pandas as pd
+import datetime, re
+
+
+def _parse_hours(val) -> float:
+    if isinstance(val, datetime.time):
+        return val.hour + val.minute / 60 + val.second / 3600
+    if isinstance(val, datetime.timedelta):
+        return val.total_seconds() / 3600
+    if isinstance(val, (int, float)):
+        if pd.isna(val):
+            return 0.0
+        if 0 < val < 1:
+            return val * 24  # Excel fraction of day
+        return float(val)
+    s = str(val).strip()
+    if ':' in s:
+        parts = s.split(':')
+        try:
+            return int(parts[0]) + int(parts[1]) / 60
+        except (ValueError, IndexError):
+            return 0.0
+    try:
+        v = float(s)
+        return v * 24 if 0 < v < 1 else v
+    except (ValueError, TypeError):
+        return 0.0
 
 
 def parse_attendance(filepath: str) -> pd.DataFrame:
     with pd.ExcelFile(filepath, engine='openpyxl') as xl:
         sheet = next((s for s in xl.sheet_names if 'וולטה' in s), xl.sheet_names[0])
         raw = xl.parse(sheet, header=None)
-    raw = raw.astype(str).apply(lambda col: col.str.strip())
-    header_row = next(
-        (i for i, row in raw.iterrows()
-         if any('מספר' in str(v) and 'עובד' in str(v) for v in row.values)),
-        None
-    )
-    if header_row is None:
-        raise KeyError(f"לא נמצאה שורת כותרות עם 'מספר עובד'. שורות: {raw.head(3).values.tolist()}")
-    raw.columns = [str(v).strip() for v in raw.iloc[header_row]]
-    df = raw.iloc[header_row + 1:].reset_index(drop=True)
+        header_row = next(
+            (i for i, row in raw.iterrows()
+             if any('מספר' in str(v) and 'עובד' in str(v) for v in row.values)),
+            None
+        )
+        if header_row is None:
+            raise KeyError("לא נמצאה שורת כותרות עם 'מספר עובד'")
+        df = xl.parse(sheet, header=header_row)
+    df.columns = [str(c).strip() for c in df.columns]
     df = df[pd.to_numeric(df['מספר עובד'], errors='coerce').notna()].copy()
     df['מספר עובד'] = pd.to_numeric(df['מספר עובד'], errors='coerce').astype('Int64')
-    hours_col = next((c for c in df.columns if 'סה"כ' in c or 'סהכ' in c or 'כללי' in c), None)
-    if hours_col is None:
-        raise KeyError(f"לא נמצאה עמודת שעות. עמודות: {list(df.columns)}")
-    df['סה"כ כללי'] = pd.to_numeric(df[hours_col], errors='coerce').fillna(0.0)
+    # sum per-shift columns (סה"כ 1, סה"כ 2, ...) — more reliable than סה"כ כללי
+    shift_cols = [c for c in df.columns if re.match(r'סה"כ\s*\d+', c)]
+    if shift_cols:
+        df['סה"כ כללי'] = sum(df[c].apply(_parse_hours) for c in shift_cols)
+    else:
+        hours_col = next((c for c in df.columns if 'סה"כ' in c or 'כללי' in c), None)
+        if hours_col is None:
+            raise KeyError(f"לא נמצאה עמודת שעות. עמודות: {list(df.columns)}")
+        df['סה"כ כללי'] = df[hours_col].apply(_parse_hours)
     return df
 
 
@@ -81,7 +111,7 @@ def parse_feedback(filepath: str) -> dict:
             df = xl.parse(sheet, header=None)
             mask = df.iloc[:, 0].astype(str).str.contains('ציון משוב', na=False)
             if mask.any():
-                score = pd.to_numeric(df.iloc[mask.idxmax(), 1], errors='coerce')
+                score = pd.to_numeric(df.loc[mask.idxmax(), 1], errors='coerce')
                 if not pd.isna(score):
                     scores[sheet] = float(score)
     return scores

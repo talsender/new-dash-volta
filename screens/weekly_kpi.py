@@ -70,7 +70,10 @@ def render():
     for agent in agents:
         hours = calculate_work_hours(att_df, agent["employee_id"])
         inp = manual[agent["id"]]
-        vc_row = vc_df[vc_df['משתמש'].str.contains(agent['name'].split()[0], na=False)]
+        vc_name = agent.get('voicenter_name') or agent['name']
+        vc_row = vc_df[vc_df['משתמש'].str.lower().str.contains(vc_name.lower(), na=False, regex=False)]
+        if not len(vc_row):
+            vc_row = vc_df[vc_df['משתמש'].str.contains(agent['name'].split()[0], na=False, regex=False)]
         answered = int(vc_row['נענו'].iloc[0]) if len(vc_row) else 0
         occ_pct  = float(vc_row['אחוז תעסוקה נטו'].iloc[0]) if len(vc_row) else 0.0
         kpi_data.append({

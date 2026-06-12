@@ -9,17 +9,20 @@ def render():
 
     st.subheader("נציגים קיימים")
     for i, agent in enumerate(agents):
-        c1, c2, c3, c4, c5 = st.columns([3, 2, 3, 2, 1])
+        c1, c2, c3, c4, c5, c6 = st.columns([2, 2, 2, 2, 2, 1])
         with c1:
-            agents[i]["name"] = st.text_input("שם", agent["name"], key=f"n_{i}")
+            agents[i]["name"] = st.text_input("שם עברי", agent["name"], key=f"n_{i}")
         with c2:
             agents[i]["employee_id"] = int(st.number_input(
                 "מ. עובד", value=agent["employee_id"], step=1, key=f"e_{i}"))
         with c3:
-            agents[i]["email"] = st.text_input("מייל", agent.get("email", ""), key=f"m_{i}")
+            agents[i]["voicenter_name"] = st.text_input(
+                "שם ב-Voicenter", agent.get("voicenter_name", ""), key=f"vc_{i}")
         with c4:
-            agents[i]["active"] = st.checkbox("פעיל", agent["active"], key=f"a_{i}")
+            agents[i]["email"] = st.text_input("מייל", agent.get("email", ""), key=f"m_{i}")
         with c5:
+            agents[i]["active"] = st.checkbox("פעיל", agent["active"], key=f"a_{i}")
+        with c6:
             if st.button("🗑", key=f"d_{i}"):
                 agents.pop(i)
                 save_agents(agents)
@@ -32,12 +35,14 @@ def render():
     st.divider()
     st.subheader("הוספת נציג חדש")
     with st.form("add"):
-        name = st.text_input("שם")
+        name = st.text_input("שם עברי")
+        vc_name = st.text_input("שם ב-Voicenter")
         emp_id = st.number_input("מספר עובד", step=1, value=0)
         email = st.text_input("מייל")
         if st.form_submit_button("הוסף") and name:
             agents.append({"id": name.replace(" ", "_"),
-                           "name": name, "employee_id": int(emp_id),
+                           "name": name, "voicenter_name": vc_name,
+                           "employee_id": int(emp_id),
                            "email": email, "active": True})
             save_agents(agents)
             st.success(f"נציג {name} נוסף")

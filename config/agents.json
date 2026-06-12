@@ -1,6 +1,6 @@
 [
-  {"id": "david_ziv",      "name": "דיוד זיו",    "employee_id": 96186, "email": "", "active": true},
-  {"id": "elinor",         "name": "אלינור",       "employee_id": 98752, "email": "", "active": true},
-  {"id": "tom_sorski",     "name": "טום סורסקי",   "employee_id": 98804, "email": "", "active": true},
-  {"id": "perry_yavdayev", "name": "פרי יבדייב",   "employee_id": 99133, "email": "", "active": true}
+  {"id": "david_ziv",      "name": "דיוד זיו",    "employee_id": 96186, "email": "", "active": true,  "voicenter_name": "david ziv"},
+  {"id": "elinor",         "name": "אלינור",       "employee_id": 98752, "email": "", "active": true,  "voicenter_name": "elinor"},
+  {"id": "tom_sorski",     "name": "טום סורסקי",   "employee_id": 98804, "email": "", "active": true,  "voicenter_name": "tom Suraski"},
+  {"id": "perry_yavdayev", "name": "פרי יבדייב",   "employee_id": 99133, "email": "", "active": true,  "voicenter_name": "פרי יבדייב"}
 ]
