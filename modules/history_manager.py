@@ -5,9 +5,26 @@ from datetime import datetime
 _DEFAULT_PATH = os.path.join(os.path.dirname(__file__), '..', 'data', 'history.json')
 _REPO_FILE_PATH = "data/history.json"
 
-# Module-level in-memory cache: survives Streamlit re-runs within the same
-# server process.  Cleared only when the server restarts or redeploys.
-_mem: list | None = None
+# Session-state cache key — used instead of module-level _mem so the cache is
+# guaranteed to be shared between save_month() and load_history() within the
+# same user session, even across screen navigations on Streamlit Cloud.
+_SS_CACHE_KEY = "__history_data__"
+
+
+def _cache_get():
+    try:
+        import streamlit as st
+        return st.session_state.get(_SS_CACHE_KEY)
+    except Exception:
+        return None
+
+
+def _cache_set(data):
+    try:
+        import streamlit as st
+        st.session_state[_SS_CACHE_KEY] = data
+    except Exception:
+        pass
 
 
 def _github_cfg():
@@ -60,39 +77,39 @@ def _load_local(path: str) -> list:
 
 
 def load_history(path: str = _DEFAULT_PATH) -> list:
-    global _mem
-    # Serve from memory cache if available (avoids disk/network on every rerun)
-    if _mem is not None:
-        return list(_mem)
+    # Serve from session_state cache if available (avoids disk/network on every rerun)
+    cached = _cache_get()
+    if cached is not None:
+        return list(cached)
 
     cfg = _github_cfg()
     if cfg:
         try:
             data, _ = _gh_read(*cfg)
-            _mem = data
-            return list(_mem)
+            _cache_set(data)
+            return list(data)
         except Exception:
             pass
 
     data = _load_local(path)
-    _mem = data
-    return list(_mem)
+    _cache_set(data)
+    return list(data)
 
 
 def save_month(snapshot: dict, path: str = _DEFAULT_PATH) -> str:
     """Persist snapshot and return storage source: 'github' | 'local'."""
-    global _mem
     snapshot = dict(snapshot)
     snapshot.setdefault("saved_at", datetime.now().isoformat())
 
     # Merge into the current history list
-    base = list(_mem) if _mem is not None else _load_local(path)
+    cached = _cache_get()
+    base = list(cached) if cached is not None else _load_local(path)
     base = [h for h in base if h.get("month") != snapshot["month"]]
     base.append(snapshot)
     base.sort(key=lambda h: h["month"])
 
-    # Update memory cache immediately so the history page sees it right away
-    _mem = base
+    # Update session_state cache immediately so the history page sees it right away
+    _cache_set(base)
 
     # Try GitHub first
     cfg = _github_cfg()

@@ -40,8 +40,9 @@ def render():
 
     col_refresh, _ = st.columns([1, 4])
     if col_refresh.button("🔄 רענן היסטוריה"):
-        import modules.history_manager as hm
-        hm._mem = None          # clear in-memory cache to force reload
+        # Clear session_state cache so load_history() fetches fresh data
+        if "__history_data__" in st.session_state:
+            del st.session_state["__history_data__"]
         st.rerun()
 
     history = load_history()

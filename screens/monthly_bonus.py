@@ -46,12 +46,114 @@ def _get_feedback(scores: dict, agent_name: str, feedback_name: str = None):
     return None
 
 
+def _compute_results(att_file, vc_file, fb_file, manual, agents, settings, month_label):
+    """Parse uploaded files and compute all KPI/bonus data.
+
+    Raises on any parse failure (caller handles the exception).
+    Always cleans up temp files in a finally block.
+    Returns a results dict suitable for storing in session_state[_SS_KEY].
+    """
+    t = settings["bonus_thresholds"]
+
+    att_path = _save_upload(att_file, '.xlsx')
+    vc_path  = _save_upload(vc_file, '.xls')
+    fb_path  = _save_upload(fb_file, '.xlsx') if fb_file else None
+    try:
+        att_df          = parse_attendance(att_path)
+        vc_df           = parse_voicenter(vc_path)
+        feedback_scores = parse_feedback(fb_path) if fb_path else {}
+    finally:
+        for p in [att_path, vc_path, fb_path]:
+            if p:
+                try:
+                    os.unlink(p)
+                except OSError:
+                    pass
+
+    kpi_data = []
+    for agent in agents:
+        hours   = calculate_work_hours(att_df, agent["employee_id"])
+        inp     = manual[agent["id"]]
+        vc_name = agent.get('voicenter_name') or agent['name']
+        vc_row  = vc_df[vc_df['משתמש'].str.lower().str.contains(vc_name.lower(), na=False, regex=False)]
+        if not len(vc_row):
+            first_name = agent['name'].split()[0]
+            vc_row = vc_df[vc_df['משתמש'].str.contains(first_name, na=False, regex=False)]
+        answered = int(vc_row['נענו'].iloc[0])              if len(vc_row) else 0
+        occ_pct  = float(vc_row['אחוז תעסוקה נטו'].iloc[0]) if len(vc_row) else 0.0
+        kpi_data.append({
+            "agent_id": agent["id"], "name": agent["name"],
+            "employee_id": agent["employee_id"], "email": agent.get("email", ""),
+            "hours": hours, "meetings": inp["meetings"],
+            "meetings_per_hour": calculate_meetings_per_hour(inp["meetings"], hours),
+            "occupancy_pct": occ_pct, "idle_calls": inp["idle_calls"],
+            "idle_pct": calculate_idle_pct(inp["idle_calls"], answered),
+            "phoenix": inp["phoenix"],
+            "feedback_score": _get_feedback(feedback_scores, agent["name"],
+                                            feedback_name=agent.get("feedback_name")),
+        })
+
+    center_rate  = calculate_center_rate([{"hours": k["hours"], "meetings": k["meetings"]} for k in kpi_data])
+    center_meets = center_rate >= t["meetings_per_hour_tier_a"]
+
+    bonus_data = []
+    for k in kpi_data:
+        kpi_in = {"meetings": k["meetings"], "individual_rate": k["meetings_per_hour"],
+                  "occupancy_pct": k["occupancy_pct"], "idle_pct": k["idle_pct"],
+                  "feedback_score": k["feedback_score"], "phoenix": k["phoenix"]}
+        b = calculate_agent_bonus(kpi_in, center_meets, settings)
+        bonus_data.append({"name": k["name"], "employee_id": k["employee_id"], **b})
+
+    manager_bonus = calculate_manager_bonus(center_rate, settings)
+    total_phoenix = sum(k["phoenix"] for k in kpi_data)
+    billing = {
+        "hours_by_agent":  {k["name"]: k["hours"] for k in kpi_data},
+        "total_hours":     sum(k["hours"] for k in kpi_data),
+        "phoenix_count":   total_phoenix,
+        "phoenix_billing": total_phoenix * t["phoenix_client_rate"],
+    }
+
+    return {
+        "kpi_data":     kpi_data,
+        "bonus_data":   bonus_data,
+        "center_rate":  center_rate,
+        "center_meets": center_meets,
+        "manager_bonus": manager_bonus,
+        "billing":      billing,
+        "month_label":  month_label,
+    }
+
+
+def _build_snapshot(res, month_label):
+    """Build the history snapshot dict from computed results."""
+    kpi_data   = res["kpi_data"]
+    bonus_data = res["bonus_data"]
+    return {
+        "month":            month_label.strip(),
+        "label":            month_label,
+        "center_rate":      res["center_rate"],
+        "center_met_target": res["center_meets"],
+        "manager_bonus":    res["manager_bonus"],
+        "total_billing":    res["billing"]["phoenix_billing"],
+        "agents": [{
+            "name":              k["name"],
+            "hours":             k["hours"],
+            "meetings":          k["meetings"],
+            "meetings_per_hour": k["meetings_per_hour"],
+            "occupancy_pct":     k["occupancy_pct"],
+            "idle_pct":          k["idle_pct"],
+            "feedback_score":    k["feedback_score"],
+            "phoenix":           k["phoenix"],
+            "bonus_total":       b["total"],
+        } for k, b in zip(kpi_data, bonus_data)]
+    }
+
+
 def render():
     ui.page_header("בונוסים חודשיים", icon="💰", subtitle="חישוב בונוסים, Excel ושליחת מיילים")
 
     agents   = [a for a in load_agents() if a["active"]]
     settings = load_settings()
-    t        = settings["bonus_thresholds"]
 
     # ── Step 1: file upload ──────────────────────────────────────────────────
     ui.section_header("העלאת קבצים", step=1)
@@ -78,77 +180,41 @@ def render():
                 "idle_calls": st.number_input("שיחות סרק", min_value=0, key=f"bi_{agent['id']}"),
             }
 
-    # ── Compute button ───────────────────────────────────────────────────────
+    # ── Compute / Save buttons ───────────────────────────────────────────────
+    # Show both buttons when files are uploaded so the user can either just
+    # compute-and-review, or compute-and-save in a single click.
     if att_file and vc_file:
-        if st.button("חשב בונוסים"):
-            att_path = _save_upload(att_file, '.xlsx')
-            vc_path  = _save_upload(vc_file, '.xls')
-            fb_path  = _save_upload(fb_file, '.xlsx') if fb_file else None
+        col_calc, col_save = st.columns(2)
+        calc_clicked      = col_calc.button("חשב בונוסים")
+        save_direct_clicked = col_save.button("💾 חשב ושמור להיסטוריה", type="primary")
+
+        if calc_clicked or save_direct_clicked:
             try:
-                att_df          = parse_attendance(att_path)
-                vc_df           = parse_voicenter(vc_path)
-                feedback_scores = parse_feedback(fb_path) if fb_path else {}
+                res = _compute_results(att_file, vc_file, fb_file, manual, agents, settings, month_label)
             except Exception as e:
                 st.error(f"שגיאה בקריאת קבצים: {e}")
                 return
-            finally:
-                for p in [att_path, vc_path, fb_path]:
-                    if p: os.unlink(p)
 
-            kpi_data = []
-            for agent in agents:
-                hours  = calculate_work_hours(att_df, agent["employee_id"])
-                inp    = manual[agent["id"]]
-                vc_name = agent.get('voicenter_name') or agent['name']
-                vc_row = vc_df[vc_df['משתמש'].str.lower().str.contains(vc_name.lower(), na=False, regex=False)]
-                if not len(vc_row):
-                    first_name = agent['name'].split()[0]
-                    vc_row = vc_df[vc_df['משתמש'].str.contains(first_name, na=False, regex=False)]
-                answered = int(vc_row['נענו'].iloc[0])           if len(vc_row) else 0
-                occ_pct  = float(vc_row['אחוז תעסוקה נטו'].iloc[0]) if len(vc_row) else 0.0
-                kpi_data.append({
-                    "agent_id": agent["id"], "name": agent["name"],
-                    "employee_id": agent["employee_id"], "email": agent.get("email", ""),
-                    "hours": hours, "meetings": inp["meetings"],
-                    "meetings_per_hour": calculate_meetings_per_hour(inp["meetings"], hours),
-                    "occupancy_pct": occ_pct, "idle_calls": inp["idle_calls"],
-                    "idle_pct": calculate_idle_pct(inp["idle_calls"], answered),
-                    "phoenix": inp["phoenix"],
-                    "feedback_score": _get_feedback(feedback_scores, agent["name"],
-                                                    feedback_name=agent.get("feedback_name")),
-                })
+            st.session_state[_SS_KEY] = res
 
-            center_rate  = calculate_center_rate([{"hours": k["hours"], "meetings": k["meetings"]} for k in kpi_data])
-            center_meets = center_rate >= t["meetings_per_hour_tier_a"]
+            if save_direct_clicked:
+                snapshot  = _build_snapshot(res, month_label)
+                save_err  = None
+                save_src  = None
+                try:
+                    save_src = save_month(snapshot)
+                except Exception as e:
+                    save_err = str(e)
 
-            bonus_data = []
-            for k in kpi_data:
-                kpi_in = {"meetings": k["meetings"], "individual_rate": k["meetings_per_hour"],
-                          "occupancy_pct": k["occupancy_pct"], "idle_pct": k["idle_pct"],
-                          "feedback_score": k["feedback_score"], "phoenix": k["phoenix"]}
-                b = calculate_agent_bonus(kpi_in, center_meets, settings)
-                bonus_data.append({"name": k["name"], "employee_id": k["employee_id"], **b})
-
-            manager_bonus = calculate_manager_bonus(center_rate, settings)
-            total_phoenix = sum(k["phoenix"] for k in kpi_data)
-            billing = {
-                "hours_by_agent": {k["name"]: k["hours"] for k in kpi_data},
-                "total_hours":    sum(k["hours"] for k in kpi_data),
-                "phoenix_count":  total_phoenix,
-                "phoenix_billing": total_phoenix * t["phoenix_client_rate"],
-            }
-
-            # Store all results in session_state so subsequent button clicks
-            # (save, email, download) don't lose the computed data.
-            st.session_state[_SS_KEY] = {
-                "kpi_data":     kpi_data,
-                "bonus_data":   bonus_data,
-                "center_rate":  center_rate,
-                "center_meets": center_meets,
-                "manager_bonus": manager_bonus,
-                "billing":      billing,
-                "month_label":  month_label,
-            }
+                if save_err:
+                    st.error(f"שגיאה בשמירה: {save_err}")
+                else:
+                    # st.rerun() is OUTSIDE any try/except block so that
+                    # Streamlit's internal RerunException propagates freely.
+                    _label = "GitHub — קבוע" if save_src == "github" else "מקומי"
+                    st.toast(f"✅ חודש {month_label} נשמר ({_label})")
+                    st.session_state["nav_goto"] = "📈 היסטוריה"
+                    st.rerun()
 
     elif _SS_KEY not in st.session_state:
         st.info("נא להעלות לפחות קבצי נוכחות ו-Voicenter")
@@ -183,35 +249,23 @@ def render():
         use_container_width=True,
     )
 
+    # Secondary "save after review" button — for when the user computed first,
+    # reviewed the results, and now wants to save.
     if st.button("שמור חודש להיסטוריה"):
-        snapshot = {
-            "month": month_label.strip(),
-            "label": month_label,
-            "center_rate": center_rate,
-            "center_met_target": center_meets,
-            "manager_bonus": manager_bonus,
-            "total_billing": billing["phoenix_billing"],
-            "agents": [{
-                "name": k["name"], "hours": k["hours"], "meetings": k["meetings"],
-                "meetings_per_hour": k["meetings_per_hour"],
-                "occupancy_pct": k["occupancy_pct"], "idle_pct": k["idle_pct"],
-                "feedback_score": k["feedback_score"], "phoenix": k["phoenix"],
-                "bonus_total": b["total"],
-            } for k, b in zip(kpi_data, bonus_data)]
-        }
-        _save_err = None
-        _save_src = None
+        snapshot = _build_snapshot(res, month_label)
+        save_err = None
+        save_src = None
         try:
-            _save_src = save_month(snapshot)
+            save_src = save_month(snapshot)
         except Exception as e:
-            _save_err = str(e)
+            save_err = str(e)
 
-        if _save_err:
-            st.error(f"שגיאה בשמירה: {_save_err}")
+        if save_err:
+            st.error(f"שגיאה בשמירה: {save_err}")
         else:
-            # st.rerun() raises a Streamlit-internal exception that must NOT
-            # be inside an except-Exception block or it will be swallowed.
-            _label = "GitHub — קבוע" if _save_src == "github" else "מקומי"
+            # st.rerun() is OUTSIDE any try/except block so that
+            # Streamlit's internal RerunException propagates freely.
+            _label = "GitHub — קבוע" if save_src == "github" else "מקומי"
             st.toast(f"✅ חודש {month_label} נשמר ({_label})")
             st.session_state["nav_goto"] = "📈 היסטוריה"
             st.rerun()

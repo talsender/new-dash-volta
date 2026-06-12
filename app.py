@@ -64,7 +64,11 @@ _LOGO = (
 
 # Support programmatic navigation: set st.session_state['nav_goto'] = page_name
 # from any screen and call st.rerun() to jump to that page.
-nav_to = st.session_state.pop("nav_goto", None)
+# Use get+del instead of pop() — Streamlit's session_state implementation
+# can behave unexpectedly with pop() on some versions.
+nav_to = st.session_state.get("nav_goto")
+if "nav_goto" in st.session_state:
+    del st.session_state["nav_goto"]
 if nav_to and nav_to in PAGES:
     st.session_state[_NAV_KEY] = nav_to
 
