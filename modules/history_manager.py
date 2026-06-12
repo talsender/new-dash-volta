@@ -122,11 +122,16 @@ def save_month(snapshot: dict, path: str = _DEFAULT_PATH) -> str:
         except Exception:
             pass
 
-    # Local fallback
-    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(base, f, ensure_ascii=False, indent=2)
-    return "local"
+    # Local fallback — non-fatal: Streamlit Cloud source dir may be read-only.
+    # Session-state cache was already updated above, so the data is visible
+    # for this session even if the file write fails.
+    try:
+        os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(base, f, ensure_ascii=False, indent=2)
+        return "local"
+    except OSError:
+        return "session"
 
 
 def get_month(month: str, path: str = _DEFAULT_PATH):

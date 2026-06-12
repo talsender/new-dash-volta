@@ -211,7 +211,8 @@ def render():
                 else:
                     # st.rerun() is OUTSIDE any try/except block so that
                     # Streamlit's internal RerunException propagates freely.
-                    _label = "GitHub — קבוע" if save_src == "github" else "מקומי"
+                    _labels = {"github": "GitHub — קבוע", "local": "מקומי", "session": "זיכרון"}
+                    _label = _labels.get(save_src, "נשמר")
                     st.toast(f"✅ חודש {month_label} נשמר ({_label})")
                     st.session_state["nav_goto"] = "📈 היסטוריה"
                     st.rerun()
@@ -265,7 +266,8 @@ def render():
         else:
             # st.rerun() is OUTSIDE any try/except block so that
             # Streamlit's internal RerunException propagates freely.
-            _label = "GitHub — קבוע" if save_src == "github" else "מקומי"
+            _labels = {"github": "GitHub — קבוע", "local": "מקומי", "session": "זיכרון"}
+            _label = _labels.get(save_src, "נשמר")
             st.toast(f"✅ חודש {month_label} נשמר ({_label})")
             st.session_state["nav_goto"] = "📈 היסטוריה"
             st.rerun()
