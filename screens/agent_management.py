@@ -37,7 +37,7 @@ def render():
                     save_agents(agents)
                     st.rerun()
 
-    if st.button("💾 שמור שינויים"):
+    if st.button("שמור שינויים"):
         save_agents(agents)
         st.success("נשמר בהצלחה ✅")
 

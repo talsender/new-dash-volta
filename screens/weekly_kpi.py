@@ -42,7 +42,7 @@ def render():
     finally:
         os.unlink(att_path); os.unlink(vc_path)
 
-    with st.expander("🔍 אבחון — נתונים שנקראו מהקבצים"):
+    with st.expander("אבחון — נתונים שנקראו מהקבצים"):
         st.write("**נוכחות — עמודות:**", list(att_df.columns))
         st.write("**נוכחות — שורות לדוגמה:**")
         st.dataframe(att_df.head(5))
@@ -115,12 +115,12 @@ def render():
         xl_path = f.name
     export_weekly_kpi(kpi_data, xl_path)
     with open(xl_path, 'rb') as f:
-        st.download_button("📥 הורד Excel", f.read(), file_name=f"kpi_{week_label}.xlsx")
+        st.download_button("הורד Excel", f.read(), file_name=f"kpi_{week_label}.xlsx")
     os.unlink(xl_path)
 
     ui.section_header("שליחת מיילים", step=4)
     mgmt_html = build_weekly_management_email(kpi_data, week_label)
-    with st.expander("📧 תצוגה מקדימה — מייל הנהלה"):
+    with st.expander("תצוגה מקדימה — מייל הנהלה"):
         st.components.v1.html(mgmt_html, height=400, scrolling=True)
 
     confirmed = st.checkbox("בדקתי ואישרתי את התצוגה המקדימה")

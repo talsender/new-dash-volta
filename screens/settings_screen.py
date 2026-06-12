@@ -46,6 +46,6 @@ def render():
         "לקוח — וולטה (שורה לכל כתובת)", "\n".join(r.get("client", []))).splitlines() if x.strip()]
 
     st.markdown("<br/>", unsafe_allow_html=True)
-    if st.button("💾 שמור הגדרות"):
+    if st.button("שמור הגדרות"):
         save_settings(s)
         st.success("הגדרות נשמרו ✅")

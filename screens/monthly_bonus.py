@@ -146,7 +146,7 @@ def render():
     ui.section_header("תוצאות", step=3)
     c_a, c_b = st.columns(2)
     c_a.metric("קצב מוקד", f"{center_rate:.2f}/שעה",
-               delta="✅ עמד ביעד" if center_meets else "❌ לא עמד")
+               delta="עמד ביעד" if center_meets else "לא עמד")
     c_b.metric("בונוס מנהל", f"₪{manager_bonus:,}")
     st.dataframe(
         [{
@@ -158,7 +158,7 @@ def render():
         use_container_width=True,
     )
 
-    if st.button("💾 שמור חודש להיסטוריה"):
+    if st.button("שמור חודש להיסטוריה"):
         snapshot = {
             "month": month_label.strip(),
             "label": month_label,
@@ -204,7 +204,7 @@ def render():
             export_agent_bonus(k, b, month_label, af_path, center_meets=center_meets)
             with open(af_path, "rb") as af:
                 st.download_button(
-                    f"📥 הורד Excel אישי — {k['name']}",
+                    f"הורד Excel אישי — {k['name']}",
                     af.read(),
                     file_name=f"bonus_{k['name']}_{month_label}.xlsx",
                     key=f"dl_{k['agent_id']}",
@@ -222,12 +222,12 @@ def render():
                          center_meets=center_meets)
     with open(xl_path, 'rb') as f:
         xl_bytes = f.read()
-    st.download_button("📥 הורד Excel מוקד מלא", xl_bytes, file_name=f"bonuses_{month_label}.xlsx")
+    st.download_button("הורד Excel מוקד מלא", xl_bytes, file_name=f"bonuses_{month_label}.xlsx")
     os.unlink(xl_path)
 
     ui.section_header("שליחת מיילים", step=4)
     client_html = build_monthly_client_email(billing, month_label)
-    with st.expander("📧 תצוגה מקדימה — מייל ללקוח"):
+    with st.expander("תצוגה מקדימה — מייל ללקוח"):
         st.components.v1.html(client_html, height=300, scrolling=True)
 
     confirmed = st.checkbox("בדקתי ואישרתי את כל המיילים")
