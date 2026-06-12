@@ -2,6 +2,8 @@
 import streamlit as st
 import json
 from modules.history_manager import load_history, save_month
+from modules.month_calc import compute_month, build_snapshot
+from modules.config_manager import load_agents, load_settings
 from modules import ui
 
 try:
@@ -9,6 +11,8 @@ try:
     HAS_PLOTLY = True
 except ImportError:
     HAS_PLOTLY = False
+
+_SAVE_LABELS = {"github": "GitHub — קבוע", "local": "מקומי", "session": "זיכרון"}
 
 _PLOT_LAYOUT = dict(
     paper_bgcolor="rgba(8,20,34,0.9)",
@@ -21,13 +25,67 @@ _PLOT_LAYOUT = dict(
 )
 
 
+def _add_month_from_excel():
+    """Expander section: upload Excel files for a past month and save to history."""
+    with st.expander("➕ הוסף חודש מקובצי Excel"):
+        agents   = [a for a in load_agents() if a["active"]]
+        settings = load_settings()
+
+        c1, c2, c3 = st.columns(3)
+        att_file = c1.file_uploader("נוכחות (.xlsx)",              type=['xlsx'],       key="h_att")
+        vc_file  = c2.file_uploader("Voicenter (.xls)",            type=['xls','xlsx'], key="h_vc")
+        fb_file  = c3.file_uploader("משובים (.xlsx) — אופציונלי", type=['xlsx'],       key="h_fb")
+
+        month_label = st.text_input("חודש", "יוני 2026", key="h_month")
+
+        manual = {}
+        cols = st.columns(len(agents))
+        for col, agent in zip(cols, agents):
+            with col:
+                st.markdown(
+                    f'<div style="color:#F5A800;font-weight:700;font-size:14px;'
+                    f'text-align:right;margin-bottom:6px;">{agent["name"]}</div>',
+                    unsafe_allow_html=True,
+                )
+                manual[agent["id"]] = {
+                    "meetings":   st.number_input("תיאומים",   min_value=0, key=f"hm_{agent['id']}"),
+                    "phoenix":    st.number_input("פניקס",     min_value=0, key=f"hp_{agent['id']}"),
+                    "idle_calls": st.number_input("שיחות סרק", min_value=0, key=f"hi_{agent['id']}"),
+                }
+
+        if st.button("חשב ושמור להיסטוריה", type="primary", key="h_save_btn",
+                     disabled=not (att_file and vc_file)):
+            try:
+                res = compute_month(att_file, vc_file, fb_file, manual, agents, settings, month_label)
+            except Exception as e:
+                st.error(f"שגיאה בקריאת קבצים: {e}")
+                return
+
+            snapshot = build_snapshot(res, month_label)
+            save_src = save_month(snapshot)
+            st.toast(f"✅ חודש {month_label} נשמר ({_SAVE_LABELS.get(save_src, 'נשמר')})")
+            if "__history_data__" in st.session_state:
+                del st.session_state["__history_data__"]
+            st.rerun()
+
+
+def _upload_json_section():
+    uploaded = st.file_uploader("📤 העלה היסטוריה (JSON)", type=["json"], key="hist_upload")
+    if uploaded:
+        data = json.loads(uploaded.read().decode("utf-8"))
+        for m in data:
+            save_month(m)
+        st.success(f"שוחזרו {len(data)} חודשים ✅")
+        st.rerun()
+
+
 def render():
     ui.page_header("היסטוריה וניתוח", icon="📈", subtitle="מגמות ביצועים לאורך זמן")
 
     # GitHub persistence status
     try:
-        token  = st.secrets.get("GITHUB_TOKEN", "")
-        repo   = st.secrets.get("GITHUB_REPO",  "")
+        token    = st.secrets.get("GITHUB_TOKEN", "")
+        repo     = st.secrets.get("GITHUB_REPO",  "")
         github_ok = bool(token and repo)
     except Exception:
         github_ok = False
@@ -40,7 +98,6 @@ def render():
 
     col_refresh, _ = st.columns([1, 4])
     if col_refresh.button("🔄 רענן היסטוריה"):
-        # Clear session_state cache so load_history() fetches fresh data
         if "__history_data__" in st.session_state:
             del st.session_state["__history_data__"]
         st.rerun()
@@ -48,7 +105,8 @@ def render():
     history = load_history()
     if not history:
         st.info("אין נתונים היסטוריים עדיין. לאחר חישוב חודשי לחץ 'שמור חודש להיסטוריה'.")
-        _upload_section()
+        _add_month_from_excel()
+        _upload_json_section()
         return
 
     labels = [h["label"] for h in history]
@@ -121,6 +179,7 @@ def render():
                 st.json(h)
 
     st.markdown("<hr/>", unsafe_allow_html=True)
+
     c1, c2 = st.columns(2)
     with c1:
         st.download_button(
@@ -129,14 +188,7 @@ def render():
             file_name="kpi_history.json", mime="application/json",
         )
     with c2:
-        _upload_section()
+        _upload_json_section()
 
-
-def _upload_section():
-    uploaded = st.file_uploader("📤 העלה היסטוריה (JSON)", type=["json"], key="hist_upload")
-    if uploaded:
-        data = json.loads(uploaded.read().decode("utf-8"))
-        for m in data:
-            save_month(m)
-        st.success(f"שוחזרו {len(data)} חודשים ✅")
-        st.rerun()
+    st.markdown("<hr/>", unsafe_allow_html=True)
+    _add_month_from_excel()

@@ -105,45 +105,65 @@ def load_history(path: str = _DEFAULT_PATH) -> list:
 
 
 def save_month(snapshot: dict, path: str = _DEFAULT_PATH) -> str:
-    """Persist snapshot and return storage source: 'github' | 'local'."""
-    snapshot = dict(snapshot)
-    snapshot.setdefault("saved_at", datetime.now().isoformat())
+    """Persist snapshot and return storage source: 'github' | 'local' | 'session'.
 
-    use_cache = _use_cache(path)
-
-    if use_cache:
-        cached = _cache_get()
-        base = list(cached) if cached is not None else _load_local(path)
-    else:
-        base = _load_local(path)
-
-    base = [h for h in base if h.get("month") != snapshot["month"]]
-    base.append(snapshot)
-    base.sort(key=lambda h: h["month"])
-
-    if use_cache:
-        # Update session_state cache immediately so the history page sees it right away
-        _cache_set(base)
-
-        # Try GitHub first
-        cfg = _github_cfg()
-        if cfg:
-            try:
-                token, repo, branch = cfg
-                _, sha = _gh_read(token, repo, branch)
-                if _gh_write(token, repo, branch, base, sha):
-                    return "github"
-            except Exception:
-                pass
-
-    # Local file write (production fallback or test path)
-    # Non-fatal on Streamlit Cloud where the source dir may be read-only.
+    Never raises — all failures fall back to 'session' (in-memory cache).
+    """
     try:
-        os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(base, f, ensure_ascii=False, indent=2)
-        return "local"
-    except OSError:
+        snapshot = dict(snapshot)
+        snapshot.setdefault("saved_at", datetime.now().isoformat())
+
+        use_cache = _use_cache(path)
+
+        # Build the current list, falling back gracefully at every step
+        if use_cache:
+            cached = _cache_get()
+            if cached is not None:
+                base = list(cached)
+            else:
+                try:
+                    base = _load_local(path)
+                except Exception:
+                    base = []
+        else:
+            try:
+                base = _load_local(path)
+            except Exception:
+                base = []
+
+        base = [h for h in base if h.get("month") != snapshot["month"]]
+        base.append(snapshot)
+        base.sort(key=lambda h: h.get("month", ""))
+
+        if use_cache:
+            # Write to session_state cache first — history page reads from here immediately
+            _cache_set(base)
+
+            cfg = _github_cfg()
+            if cfg:
+                try:
+                    token, repo, branch = cfg
+                    _, sha = _gh_read(token, repo, branch)
+                    if _gh_write(token, repo, branch, base, sha):
+                        return "github"
+                except Exception:
+                    pass
+
+        # Local file write — non-fatal on Streamlit Cloud (read-only source dir)
+        try:
+            os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(base, f, ensure_ascii=False, indent=2)
+            return "local"
+        except Exception:
+            return "session"
+
+    except Exception:
+        # Last-resort: try to at least update the cache so history isn't empty
+        try:
+            _cache_set([snapshot])
+        except Exception:
+            pass
         return "session"
 
 

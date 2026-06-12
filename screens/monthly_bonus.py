@@ -1,10 +1,7 @@
 # screens/monthly_bonus.py
 import streamlit as st
 import tempfile, os
-from modules.data_loader import parse_attendance, parse_voicenter, parse_feedback
-from modules.calculator import (calculate_work_hours, calculate_meetings_per_hour,
-                                 calculate_idle_pct, calculate_center_rate,
-                                 calculate_agent_bonus, calculate_manager_bonus)
+from modules.month_calc import compute_month, build_snapshot
 from modules.config_manager import load_agents, load_settings
 from modules.email_builder import (build_monthly_client_email, build_monthly_agent_email)
 from modules.email_sender import send_email
@@ -13,140 +10,16 @@ from modules.history_manager import save_month
 from modules import ui
 
 _SS_KEY = "mb_results"
+_SAVE_LABELS = {"github": "GitHub — קבוע", "local": "מקומי", "session": "זיכרון"}
 
 
-def _save_upload(uploaded, suffix):
-    f = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
-    f.write(uploaded.read()); f.close()
-    return f.name
-
-
-def _get_feedback(scores: dict, agent_name: str, feedback_name: str = None):
-    if not scores:
-        return None
-    if feedback_name:
-        fb = feedback_name.strip()
-        if fb in scores:
-            return scores[fb]
-        fb_l = fb.lower()
-        for key, val in scores.items():
-            if key.strip().lower() == fb_l:
-                return val
-    name = agent_name.strip()
-    if name in scores:
-        return scores[name]
-    name_l  = name.lower()
-    first_l = name.split()[0].lower()
-    for key, val in scores.items():
-        key_l = key.strip().lower()
-        if key_l in name_l or name_l in key_l:
-            return val
-        if first_l == key_l or key_l.startswith(first_l) or first_l.startswith(key_l):
-            return val
-    return None
-
-
-def _compute_results(att_file, vc_file, fb_file, manual, agents, settings, month_label):
-    """Parse uploaded files and compute all KPI/bonus data.
-
-    Raises on any parse failure (caller handles the exception).
-    Always cleans up temp files in a finally block.
-    Returns a results dict suitable for storing in session_state[_SS_KEY].
-    """
-    t = settings["bonus_thresholds"]
-
-    att_path = _save_upload(att_file, '.xlsx')
-    vc_path  = _save_upload(vc_file, '.xls')
-    fb_path  = _save_upload(fb_file, '.xlsx') if fb_file else None
-    try:
-        att_df          = parse_attendance(att_path)
-        vc_df           = parse_voicenter(vc_path)
-        feedback_scores = parse_feedback(fb_path) if fb_path else {}
-    finally:
-        for p in [att_path, vc_path, fb_path]:
-            if p:
-                try:
-                    os.unlink(p)
-                except OSError:
-                    pass
-
-    kpi_data = []
-    for agent in agents:
-        hours   = calculate_work_hours(att_df, agent["employee_id"])
-        inp     = manual[agent["id"]]
-        vc_name = agent.get('voicenter_name') or agent['name']
-        vc_row  = vc_df[vc_df['משתמש'].str.lower().str.contains(vc_name.lower(), na=False, regex=False)]
-        if not len(vc_row):
-            first_name = agent['name'].split()[0]
-            vc_row = vc_df[vc_df['משתמש'].str.contains(first_name, na=False, regex=False)]
-        answered = int(vc_row['נענו'].iloc[0])              if len(vc_row) else 0
-        occ_pct  = float(vc_row['אחוז תעסוקה נטו'].iloc[0]) if len(vc_row) else 0.0
-        kpi_data.append({
-            "agent_id": agent["id"], "name": agent["name"],
-            "employee_id": agent["employee_id"], "email": agent.get("email", ""),
-            "hours": hours, "meetings": inp["meetings"],
-            "meetings_per_hour": calculate_meetings_per_hour(inp["meetings"], hours),
-            "occupancy_pct": occ_pct, "idle_calls": inp["idle_calls"],
-            "idle_pct": calculate_idle_pct(inp["idle_calls"], answered),
-            "phoenix": inp["phoenix"],
-            "feedback_score": _get_feedback(feedback_scores, agent["name"],
-                                            feedback_name=agent.get("feedback_name")),
-        })
-
-    center_rate  = calculate_center_rate([{"hours": k["hours"], "meetings": k["meetings"]} for k in kpi_data])
-    center_meets = center_rate >= t["meetings_per_hour_tier_a"]
-
-    bonus_data = []
-    for k in kpi_data:
-        kpi_in = {"meetings": k["meetings"], "individual_rate": k["meetings_per_hour"],
-                  "occupancy_pct": k["occupancy_pct"], "idle_pct": k["idle_pct"],
-                  "feedback_score": k["feedback_score"], "phoenix": k["phoenix"]}
-        b = calculate_agent_bonus(kpi_in, center_meets, settings)
-        bonus_data.append({"name": k["name"], "employee_id": k["employee_id"], **b})
-
-    manager_bonus = calculate_manager_bonus(center_rate, settings)
-    total_phoenix = sum(k["phoenix"] for k in kpi_data)
-    billing = {
-        "hours_by_agent":  {k["name"]: k["hours"] for k in kpi_data},
-        "total_hours":     sum(k["hours"] for k in kpi_data),
-        "phoenix_count":   total_phoenix,
-        "phoenix_billing": total_phoenix * t["phoenix_client_rate"],
-    }
-
-    return {
-        "kpi_data":     kpi_data,
-        "bonus_data":   bonus_data,
-        "center_rate":  center_rate,
-        "center_meets": center_meets,
-        "manager_bonus": manager_bonus,
-        "billing":      billing,
-        "month_label":  month_label,
-    }
-
-
-def _build_snapshot(res, month_label):
-    """Build the history snapshot dict from computed results."""
-    kpi_data   = res["kpi_data"]
-    bonus_data = res["bonus_data"]
-    return {
-        "month":            month_label.strip(),
-        "label":            month_label,
-        "center_rate":      res["center_rate"],
-        "center_met_target": res["center_meets"],
-        "manager_bonus":    res["manager_bonus"],
-        "total_billing":    res["billing"]["phoenix_billing"],
-        "agents": [{
-            "name":              k["name"],
-            "hours":             k["hours"],
-            "meetings":          k["meetings"],
-            "meetings_per_hour": k["meetings_per_hour"],
-            "occupancy_pct":     k["occupancy_pct"],
-            "idle_pct":          k["idle_pct"],
-            "feedback_score":    k["feedback_score"],
-            "phoenix":           k["phoenix"],
-            "bonus_total":       b["total"],
-        } for k, b in zip(kpi_data, bonus_data)]
-    }
+def _do_save_and_navigate(res, month_label):
+    """Save results to history and navigate. save_month never raises."""
+    snapshot = build_snapshot(res, month_label)
+    save_src = save_month(snapshot)
+    st.toast(f"✅ חודש {month_label} נשמר ({_SAVE_LABELS.get(save_src, 'נשמר')})")
+    st.session_state["nav_goto"] = "📈 היסטוריה"
+    st.rerun()
 
 
 def render():
@@ -158,9 +31,9 @@ def render():
     # ── Step 1: file upload ──────────────────────────────────────────────────
     ui.section_header("העלאת קבצים", step=1)
     c1, c2, c3 = st.columns(3)
-    att_file = c1.file_uploader("נוכחות (.xlsx)",                  type=['xlsx'],          key="b_att")
-    vc_file  = c2.file_uploader("Voicenter (.xls)",                type=['xls','xlsx'],    key="b_vc")
-    fb_file  = c3.file_uploader("משובים (.xlsx) — אופציונלי",     type=['xlsx'],          key="b_fb")
+    att_file = c1.file_uploader("נוכחות (.xlsx)",              type=['xlsx'],       key="b_att")
+    vc_file  = c2.file_uploader("Voicenter (.xls)",            type=['xls','xlsx'], key="b_vc")
+    fb_file  = c3.file_uploader("משובים (.xlsx) — אופציונלי", type=['xlsx'],       key="b_fb")
 
     # ── Step 2: manual input ─────────────────────────────────────────────────
     ui.section_header("הזנה ידנית", step=2)
@@ -181,16 +54,14 @@ def render():
             }
 
     # ── Compute / Save buttons ───────────────────────────────────────────────
-    # Show both buttons when files are uploaded so the user can either just
-    # compute-and-review, or compute-and-save in a single click.
     if att_file and vc_file:
         col_calc, col_save = st.columns(2)
-        calc_clicked      = col_calc.button("חשב בונוסים")
+        calc_clicked        = col_calc.button("חשב בונוסים")
         save_direct_clicked = col_save.button("💾 חשב ושמור להיסטוריה", type="primary")
 
         if calc_clicked or save_direct_clicked:
             try:
-                res = _compute_results(att_file, vc_file, fb_file, manual, agents, settings, month_label)
+                res = compute_month(att_file, vc_file, fb_file, manual, agents, settings, month_label)
             except Exception as e:
                 st.error(f"שגיאה בקריאת קבצים: {e}")
                 return
@@ -198,24 +69,7 @@ def render():
             st.session_state[_SS_KEY] = res
 
             if save_direct_clicked:
-                snapshot  = _build_snapshot(res, month_label)
-                save_err  = None
-                save_src  = None
-                try:
-                    save_src = save_month(snapshot)
-                except Exception as e:
-                    save_err = str(e)
-
-                if save_err:
-                    st.error(f"שגיאה בשמירה: {save_err}")
-                else:
-                    # st.rerun() is OUTSIDE any try/except block so that
-                    # Streamlit's internal RerunException propagates freely.
-                    _labels = {"github": "GitHub — קבוע", "local": "מקומי", "session": "זיכרון"}
-                    _label = _labels.get(save_src, "נשמר")
-                    st.toast(f"✅ חודש {month_label} נשמר ({_label})")
-                    st.session_state["nav_goto"] = "📈 היסטוריה"
-                    st.rerun()
+                _do_save_and_navigate(res, month_label)
 
     elif _SS_KEY not in st.session_state:
         st.info("נא להעלות לפחות קבצי נוכחות ו-Voicenter")
@@ -225,14 +79,14 @@ def render():
         return
 
     # ── Restore computed results from session_state ──────────────────────────
-    res          = st.session_state[_SS_KEY]
-    kpi_data     = res["kpi_data"]
-    bonus_data   = res["bonus_data"]
-    center_rate  = res["center_rate"]
-    center_meets = res["center_meets"]
+    res           = st.session_state[_SS_KEY]
+    kpi_data      = res["kpi_data"]
+    bonus_data    = res["bonus_data"]
+    center_rate   = res["center_rate"]
+    center_meets  = res["center_meets"]
     manager_bonus = res["manager_bonus"]
-    billing      = res["billing"]
-    month_label  = res["month_label"]
+    billing       = res["billing"]
+    month_label   = res["month_label"]
 
     # ── Step 3: results ──────────────────────────────────────────────────────
     ui.section_header("תוצאות", step=3)
@@ -250,27 +104,8 @@ def render():
         use_container_width=True,
     )
 
-    # Secondary "save after review" button — for when the user computed first,
-    # reviewed the results, and now wants to save.
     if st.button("שמור חודש להיסטוריה"):
-        snapshot = _build_snapshot(res, month_label)
-        save_err = None
-        save_src = None
-        try:
-            save_src = save_month(snapshot)
-        except Exception as e:
-            save_err = str(e)
-
-        if save_err:
-            st.error(f"שגיאה בשמירה: {save_err}")
-        else:
-            # st.rerun() is OUTSIDE any try/except block so that
-            # Streamlit's internal RerunException propagates freely.
-            _labels = {"github": "GitHub — קבוע", "local": "מקומי", "session": "זיכרון"}
-            _label = _labels.get(save_src, "נשמר")
-            st.toast(f"✅ חודש {month_label} נשמר ({_label})")
-            st.session_state["nav_goto"] = "📈 היסטוריה"
-            st.rerun()
+        _do_save_and_navigate(res, month_label)
 
     # ── Per-agent cards ──────────────────────────────────────────────────────
     st.markdown("---")

@@ -1,0 +1,140 @@
+# modules/month_calc.py
+"""Shared monthly KPI/bonus computation used by monthly_bonus and history screens."""
+import tempfile, os
+from modules.data_loader import parse_attendance, parse_voicenter, parse_feedback
+from modules.calculator import (calculate_work_hours, calculate_meetings_per_hour,
+                                 calculate_idle_pct, calculate_center_rate,
+                                 calculate_agent_bonus, calculate_manager_bonus)
+
+
+def _save_upload(uploaded, suffix):
+    f = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
+    f.write(uploaded.read()); f.close()
+    return f.name
+
+
+def _get_feedback(scores: dict, agent_name: str, feedback_name: str = None):
+    if not scores:
+        return None
+    if feedback_name:
+        fb = feedback_name.strip()
+        if fb in scores:
+            return scores[fb]
+        fb_l = fb.lower()
+        for key, val in scores.items():
+            if key.strip().lower() == fb_l:
+                return val
+    name = agent_name.strip()
+    if name in scores:
+        return scores[name]
+    name_l  = name.lower()
+    first_l = name.split()[0].lower()
+    for key, val in scores.items():
+        key_l = key.strip().lower()
+        if key_l in name_l or name_l in key_l:
+            return val
+        if first_l == key_l or key_l.startswith(first_l) or first_l.startswith(key_l):
+            return val
+    return None
+
+
+def compute_month(att_file, vc_file, fb_file, manual, agents, settings, month_label):
+    """Parse uploaded files and compute all KPI/bonus data.
+
+    Raises on parse failure — caller should catch and display the error.
+    Returns a results dict.
+    """
+    t = settings["bonus_thresholds"]
+
+    att_path = _save_upload(att_file, '.xlsx')
+    vc_path  = _save_upload(vc_file, '.xls')
+    fb_path  = _save_upload(fb_file, '.xlsx') if fb_file else None
+    try:
+        att_df          = parse_attendance(att_path)
+        vc_df           = parse_voicenter(vc_path)
+        feedback_scores = parse_feedback(fb_path) if fb_path else {}
+    finally:
+        for p in [att_path, vc_path, fb_path]:
+            if p:
+                try:
+                    os.unlink(p)
+                except OSError:
+                    pass
+
+    kpi_data = []
+    for agent in agents:
+        hours   = calculate_work_hours(att_df, agent["employee_id"])
+        inp     = manual[agent["id"]]
+        vc_name = agent.get('voicenter_name') or agent['name']
+        vc_row  = vc_df[vc_df['משתמש'].str.lower().str.contains(vc_name.lower(), na=False, regex=False)]
+        if not len(vc_row):
+            first_name = agent['name'].split()[0]
+            vc_row = vc_df[vc_df['משתמש'].str.contains(first_name, na=False, regex=False)]
+        answered = int(vc_row['נענו'].iloc[0])              if len(vc_row) else 0
+        occ_pct  = float(vc_row['אחוז תעסוקה נטו'].iloc[0]) if len(vc_row) else 0.0
+        kpi_data.append({
+            "agent_id": agent["id"], "name": agent["name"],
+            "employee_id": agent["employee_id"], "email": agent.get("email", ""),
+            "hours": hours, "meetings": inp["meetings"],
+            "meetings_per_hour": calculate_meetings_per_hour(inp["meetings"], hours),
+            "occupancy_pct": occ_pct, "idle_calls": inp["idle_calls"],
+            "idle_pct": calculate_idle_pct(inp["idle_calls"], answered),
+            "phoenix": inp["phoenix"],
+            "feedback_score": _get_feedback(feedback_scores, agent["name"],
+                                            feedback_name=agent.get("feedback_name")),
+        })
+
+    center_rate  = calculate_center_rate([{"hours": k["hours"], "meetings": k["meetings"]} for k in kpi_data])
+    center_meets = center_rate >= t["meetings_per_hour_tier_a"]
+
+    bonus_data = []
+    for k in kpi_data:
+        kpi_in = {"meetings": k["meetings"], "individual_rate": k["meetings_per_hour"],
+                  "occupancy_pct": k["occupancy_pct"], "idle_pct": k["idle_pct"],
+                  "feedback_score": k["feedback_score"], "phoenix": k["phoenix"]}
+        b = calculate_agent_bonus(kpi_in, center_meets, settings)
+        bonus_data.append({"name": k["name"], "employee_id": k["employee_id"], **b})
+
+    manager_bonus = calculate_manager_bonus(center_rate, settings)
+    total_phoenix = sum(k["phoenix"] for k in kpi_data)
+    billing = {
+        "hours_by_agent":  {k["name"]: k["hours"] for k in kpi_data},
+        "total_hours":     sum(k["hours"] for k in kpi_data),
+        "phoenix_count":   total_phoenix,
+        "phoenix_billing": total_phoenix * t["phoenix_client_rate"],
+    }
+
+    return {
+        "kpi_data":      kpi_data,
+        "bonus_data":    bonus_data,
+        "center_rate":   center_rate,
+        "center_meets":  center_meets,
+        "manager_bonus": manager_bonus,
+        "billing":       billing,
+        "month_label":   month_label,
+    }
+
+
+def build_snapshot(res, month_label):
+    """Build history snapshot dict from computed results."""
+    kpi_data   = res["kpi_data"]
+    bonus_data = res["bonus_data"]
+    return {
+        "month":             month_label.strip(),
+        "label":             month_label,
+        "center_rate":       res["center_rate"],
+        "center_met_target": res["center_meets"],
+        "manager_bonus":     res["manager_bonus"],
+        "total_billing":     res["billing"]["phoenix_billing"],
+        "agents": [{
+            "name":              k["name"],
+            "hours":             k["hours"],
+            "meetings":          k["meetings"],
+            "meetings_per_hour": k["meetings_per_hour"],
+            "occupancy_pct":     k["occupancy_pct"],
+            "idle_pct":          k["idle_pct"],
+            "feedback_score":    k["feedback_score"],
+            "phoenix":           k["phoenix"],
+            "bonus_total":       b["total"],
+        } for k, b in zip(kpi_data, bonus_data)]
+    }
