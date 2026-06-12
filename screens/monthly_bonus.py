@@ -7,7 +7,6 @@ from modules.email_builder import (build_monthly_client_email, build_monthly_age
 from modules.email_sender import send_email
 from modules.excel_exporter import export_monthly_bonus, export_agent_bonus
 from modules.history_manager import save_month
-from modules.file_manager import save_export_file
 from modules import ui
 
 _SS_KEY = "mb_results"
@@ -15,25 +14,9 @@ _SAVE_LABELS = {"github": "GitHub — קבוע", "local": "מקומי", "session
 
 
 def _do_save_and_navigate(res, month_label):
-    """Save results to history, save Excel export file, then navigate."""
+    """Save results to history and navigate. save_month never raises."""
     snapshot = build_snapshot(res, month_label)
     save_src = save_month(snapshot)
-
-    # Save full center Excel to data/exports/ (non-fatal if filesystem is read-only)
-    try:
-        with tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False) as f:
-            xl_path = f.name
-        export_monthly_bonus(
-            res["bonus_data"], res["billing"], month_label, xl_path,
-            kpi_data=res["kpi_data"], manager_bonus=res["manager_bonus"],
-            manager_name="טל סנדר", center_meets=res["center_meets"],
-        )
-        with open(xl_path, 'rb') as f:
-            save_export_file(month_label, f.read())
-        os.unlink(xl_path)
-    except Exception:
-        pass
-
     st.toast(f"✅ חודש {month_label} נשמר ({_SAVE_LABELS.get(save_src, 'נשמר')})")
     st.session_state["nav_goto"] = "📈 היסטוריה"
     st.rerun()
@@ -122,41 +105,7 @@ def render():
     )
 
     if st.button("שמור חודש להיסטוריה"):
-<<<<<<< HEAD
         _do_save_and_navigate(res, month_label)
-=======
-        snapshot = {
-            "month": month_label.strip(),
-            "label": month_label,
-            "center_rate": center_rate,
-            "center_met_target": center_meets,
-            "manager_bonus": manager_bonus,
-            "total_billing": billing["phoenix_billing"],
-            "agents": [{
-                "name": k["name"], "hours": k["hours"], "meetings": k["meetings"],
-                "meetings_per_hour": k["meetings_per_hour"],
-                "occupancy_pct": k["occupancy_pct"], "idle_pct": k["idle_pct"],
-                "feedback_score": k["feedback_score"], "phoenix": k["phoenix"],
-                "bonus_total": b["total"],
-            } for k, b in zip(kpi_data, bonus_data)]
-        }
-        save_month(snapshot)
-
-        # also save the full center workbook as a new XLSX file (one per save)
-        with tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False) as f:
-            save_path = f.name
-        export_monthly_bonus(bonus_data, billing, month_label, save_path,
-                             kpi_data=kpi_data,
-                             manager_bonus=manager_bonus,
-                             manager_name="טל סנדר",
-                             center_meets=center_meets)
-        with open(save_path, 'rb') as f:
-            saved_file = save_export_file(month_label, f.read())
-        os.unlink(save_path)
-
-        st.success(f"חודש {month_label} נשמר להיסטוריה ✅")
-        st.caption(f"📁 קובץ Excel נשמר: {os.path.basename(saved_file)}")
->>>>>>> 4f65d2e (itay)
 
     # ── Per-agent cards ──────────────────────────────────────────────────────
     st.markdown("---")
