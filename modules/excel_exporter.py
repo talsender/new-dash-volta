@@ -209,17 +209,37 @@ def export_weekly_kpi(kpi_data: list, filepath: str) -> None:
         _data_cell(ws, ri, 8, a.get("answered_calls", 0),  bg=row_bg)
 
     # summary row
-    total_meetings = sum(a["meetings"] for a in kpi_data)
-    total_hours    = sum(a["hours"]    for a in kpi_data)
+    n              = len(kpi_data)
+    total_meetings = sum(a["meetings"]               for a in kpi_data)
+    total_hours    = sum(a["hours"]                  for a in kpi_data)
+    total_answered = sum(a.get("answered_calls", 0)  for a in kpi_data)
+    total_phoenix  = sum(a["phoenix"]                for a in kpi_data)
     center_mph     = round(total_meetings / total_hours, 2) if total_hours else 0
+    avg_occ        = sum(a["occupancy_pct"] for a in kpi_data) / n if n else 0
+    avg_idle       = sum(a["idle_pct"]      for a in kpi_data) / n if n else 0
 
-    _apply_summary(ws, len(kpi_data) + ds, ncols, [
+    occ_bg, occ_fg   = _status_fill(avg_occ,  occ_good,  occ_warn,  higher_is_better=True)
+    idle_bg, idle_fg = _status_fill(avg_idle, idle_good, idle_warn, higher_is_better=False)
+    mph_bg,  mph_fg  = _status_fill(center_mph, mph_good, mph_warn, higher_is_better=True)
+
+    sr = len(kpi_data) + ds
+    _apply_summary(ws, sr, ncols, [
         (1, "סיכום מוקד"),
-        (2, round(total_hours, 1), "0.0"),
+        (2, round(total_hours, 1),  "0.0"),
         (3, total_meetings),
-        (4, center_mph,            "0.00"),
-        (7, sum(a["phoenix"] for a in kpi_data)),
+        (4, center_mph,             "0.00"),
+        (7, total_phoenix),
+        (8, total_answered),
     ])
+    # occupancy and idle get their own colors in the summary
+    for col, val, fmt, bg, fg in [
+        (5, avg_occ,  '0.0%',  occ_bg,  occ_fg),
+        (6, avg_idle, '0.00%', idle_bg, idle_fg),
+    ]:
+        c = ws.cell(sr, col, val)
+        c.fill = _fill(bg); c.font = _font(fg, bold=True)
+        c.border = _BORDER_SUM; c.alignment = _CENTER
+        c.number_format = fmt
 
     _autofit(ws, overrides={"A": 22, "B": 16, "C": 14, "D": 16,
                              "E": 14, "F": 14, "G": 12, "H": 16})
