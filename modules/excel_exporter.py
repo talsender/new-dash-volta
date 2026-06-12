@@ -296,7 +296,20 @@ def export_monthly_bonus(bonus_data: list, billing: dict,
     _header_row(ws2, COLS2)
     ws2.freeze_panes = "A5"
 
-    detail_totals = []
+    detail_totals   = []
+    _sum_hrs        = 0.0
+    _sum_mtg        = 0
+    _sum_mtg_base   = 0.0
+    _sum_occ_bonus  = 0.0
+    _sum_idle_calls = 0
+    _sum_idle_bonus = 0.0
+    _sum_fb_bonus   = 0.0
+    _sum_ph_val     = 0.0
+    _sum_ctr_bonus  = 0.0
+    _sum_occ        = 0.0
+    _sum_idle       = 0.0
+    _fb_scores      = []
+
     for ri, b in enumerate(bonus_data, ds2):
         stripe = _STRIPE if ri % 2 == 0 else _WHITE
         ws2.row_dimensions[ri].height = 22
@@ -315,6 +328,20 @@ def export_monthly_bonus(bonus_data: list, billing: dict,
         ph_val    = ph * ph_client_rate
         row_total = mtg_base + ctr_bonus + b["occupancy_bonus"] + b["idle_bonus"] + b["feedback_bonus"] + ph_val
         detail_totals.append(row_total)
+
+        _sum_hrs        += hrs
+        _sum_mtg        += mtg
+        _sum_mtg_base   += mtg_base
+        _sum_occ_bonus  += b["occupancy_bonus"]
+        _sum_idle_calls += k.get("idle_calls", 0)
+        _sum_idle_bonus += b["idle_bonus"]
+        _sum_fb_bonus   += b["feedback_bonus"]
+        _sum_ph_val     += ph_val
+        _sum_ctr_bonus  += ctr_bonus
+        _sum_occ        += occ
+        _sum_idle       += idl
+        if fs is not None:
+            _fb_scores.append(fs)
 
         _cell(ws2, ri,  1, b["name"],          bg=stripe, align=_RGT, bold=True)
         _cell(ws2, ri,  2, hrs,                 bg=stripe, fmt="0.0")
@@ -338,10 +365,29 @@ def export_monthly_bonus(bonus_data: list, billing: dict,
         bg, fg = _bonus_color(row_total)
         _cell(ws2, ri, 15, row_total, bg=bg, fg=fg, bold=True, fmt="#,##0 ₪")
 
+    _n2       = len(bonus_data) or 1
+    _avg_occ  = _sum_occ  / _n2
+    _avg_idle = _sum_idle / _n2
+    _avg_fb   = sum(_fb_scores) / len(_fb_scores) if _fb_scores else None
+    _cmph     = _sum_mtg / _sum_hrs if _sum_hrs else 0
+
     _summary_row(ws2, len(bonus_data) + ds2, n2, [
         (1,  'סה"כ'),
-        (3,  sum(k.get("meetings", 0) for k in kpi_map.values())),
-        (15, sum(detail_totals), "#,##0 ₪"),
+        (2,  round(_sum_hrs, 1),   "0.0"),
+        (3,  _sum_mtg),
+        (4,  round(_cmph, 2),      "0.00"),
+        (5,  _sum_mtg_base,        "#,##0 ₪"),
+        (6,  _avg_occ,             "0.0%"),
+        (7,  _sum_occ_bonus,       "#,##0 ₪"),
+        (8,  _sum_idle_calls),
+        (9,  _avg_idle,            "0.00%"),
+        (10, _sum_idle_bonus,      "#,##0 ₪"),
+        (11, round(_avg_fb, 1) if _avg_fb is not None else "—",
+             "0.0" if _avg_fb is not None else None),
+        (12, _sum_fb_bonus,        "#,##0 ₪"),
+        (13, _sum_ph_val,          "#,##0 ₪"),
+        (14, _sum_ctr_bonus,       "#,##0 ₪"),
+        (15, sum(detail_totals),   "#,##0 ₪"),
     ])
     _autofit(ws2, {"A": 20, "B": 10, "C": 12, "D": 14, "E": 16,
                    "F": 12, "G": 16, "H": 14, "I": 10, "J": 14,
@@ -391,56 +437,33 @@ def export_monthly_bonus(bonus_data: list, billing: dict,
     _autofit(ws3, {"A": 34, "B": 18, "C": 14, "D": 18})
     _print_setup(ws3)
 
-    # ── 4. חיוב ללקוח — hours + phoenix @ 100 ₪ ─────────────────────────────
-    ws4 = wb.create_sheet("חיוב ללקוח")
-    n4  = 2
-    ph_count   = billing.get("phoenix_count", 0)
-    ph_billing = billing.get("phoenix_billing", 0)
-    ds4 = _init_sheet(ws4, f"חיוב ללקוח  |  {month_label}", n4,
-                      meta=f"הופק: {now}  |  פניקס: {ph_count} עסקאות",
-                      tab_color=_GOLD)
-    _header_row(ws4, ["נציג", "שעות עבודה"])
-    ws4.freeze_panes = "A5"
-
-    for ri, (name, hours) in enumerate(billing["hours_by_agent"].items(), ds4):
-        stripe = _STRIPE if ri % 2 == 0 else _WHITE
-        ws4.row_dimensions[ri].height = 22
-        _cell(ws4, ri, 1, name,             bg=stripe, align=_RGT, bold=True)
-        _cell(ws4, ri, 2, round(hours, 1),  bg=stripe, fmt="0.0")
-
-    sr4 = len(billing["hours_by_agent"]) + ds4
-    _summary_row(ws4, sr4, n4, [
-        (1, 'סה"כ שעות'),
-        (2, round(billing["total_hours"], 1), "0.0"),
-    ])
-    _summary_row(ws4, sr4 + 1, n4, [
-        (1, f"פניקס ({ph_count} עסקאות × {ph_client_rate}₪)"),
-        (2, ph_billing, "#,##0 ₪"),
-    ])
-    _autofit(ws4, {"A": 28, "B": 18})
-    _print_setup(ws4)
+    # ── 4. Per-agent sheets ───────────────────────────────────────────────────
+    if kpi_data:
+        for k in kpi_data:
+            b = next((x for x in bonus_data if x["name"] == k["name"]), None)
+            if b is None:
+                continue
+            ws_a = wb.create_sheet(k["name"][:31])
+            _populate_agent_sheet(ws_a, k, b, month_label, s, now, center_meets)
 
     wb.save(filepath)
 
 
-# ── Per-agent bonus file ───────────────────────────────────────────────────────
+# ── Per-agent sheet helper ────────────────────────────────────────────────────
 
-def export_agent_bonus(kpi: dict, bonus: dict,
-                       month_label: str, filepath: str,
-                       center_meets: bool = False) -> None:
-
-    s              = load_settings()["bonus_thresholds"]
-    occ_good       = s["occupancy_tier_a_pct"] / 100
-    occ_warn       = s["occupancy_tier_b_pct"] / 100
-    idle_good      = s["idle_tier_a_pct"] / 100
-    idle_warn      = s["idle_tier_b_pct"] / 100
-    mph_good       = s["meetings_per_hour_tier_a"]
-    mph_warn       = mph_good * 0.75
-    rate_a         = s["meetings_per_hour_tier_a_rate"]
-    rate_b         = s["meetings_per_hour_tier_b_rate"]
-    center_rate    = s.get("center_target_bonus_per_meeting", 1)
-    ph_emp_rate    = s["phoenix_employee_rate"]
-    now            = datetime.now().strftime("%d/%m/%Y %H:%M")
+def _populate_agent_sheet(ws, kpi: dict, bonus: dict,
+                          month_label: str, s: dict, now: str,
+                          center_meets: bool = False) -> None:
+    occ_good    = s["occupancy_tier_a_pct"] / 100
+    occ_warn    = s["occupancy_tier_b_pct"] / 100
+    idle_good   = s["idle_tier_a_pct"] / 100
+    idle_warn   = s["idle_tier_b_pct"] / 100
+    mph_good    = s["meetings_per_hour_tier_a"]
+    mph_warn    = mph_good * 0.75
+    rate_a      = s["meetings_per_hour_tier_a_rate"]
+    rate_b      = s["meetings_per_hour_tier_b_rate"]
+    center_rate = s.get("center_target_bonus_per_meeting", 1)
+    ph_emp_rate = s["phoenix_employee_rate"]
 
     mph      = kpi.get("meetings_per_hour", 0)
     meetings = kpi.get("meetings", 0)
@@ -452,16 +475,12 @@ def export_agent_bonus(kpi: dict, bonus: dict,
     mtg_base = meetings * base_r
     ctr_b    = meetings * center_rate if center_meets else 0
 
-    wb    = openpyxl.Workbook()
-    ws    = wb.active
-    ws.title = "בונוס אישי"
-    ncols = 4  # מדד | ביצועים | יעד | בונוס
+    ncols = 4
     ds    = _init_sheet(ws, f"דוח בונוס אישי  —  {kpi['name']}", ncols,
                         meta=f"{month_label}  |  הופק: {now}",
                         tab_color=_GOLD)
     _header_row(ws, ["מדד", "ביצועים", "יעד", "בונוס (₪)"])
 
-    # each entry: (label, perf_value, perf_fmt, target_str, perf_bg, perf_fg, bonus_amount_or_None)
     rows = [
         ("שעות עבודה",
          round(kpi.get("hours", 0), 1), "0.0",
@@ -541,4 +560,17 @@ def export_agent_bonus(kpi: dict, bonus: dict,
 
     _autofit(ws, {"A": 26, "B": 18, "C": 22, "D": 16})
     _print_setup(ws)
+
+
+# ── Per-agent bonus file ───────────────────────────────────────────────────────
+
+def export_agent_bonus(kpi: dict, bonus: dict,
+                       month_label: str, filepath: str,
+                       center_meets: bool = False) -> None:
+    s   = load_settings()["bonus_thresholds"]
+    now = datetime.now().strftime("%d/%m/%Y %H:%M")
+    wb  = openpyxl.Workbook()
+    ws  = wb.active
+    ws.title = "בונוס אישי"
+    _populate_agent_sheet(ws, kpi, bonus, month_label, s, now, center_meets)
     wb.save(filepath)

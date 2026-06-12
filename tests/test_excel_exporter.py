@@ -44,6 +44,6 @@ def test_export_monthly_has_three_sheets():
     try:
         export_monthly_bonus(_bonus(), _billing(), "יוני 2026", path)
         wb = openpyxl.load_workbook(path)
-        assert {'לתשלום', 'פירוט בונוסים', 'חיוב ללקוח'}.issubset(set(wb.sheetnames))
+        assert {'לתשלום', 'פירוט בונוסים', 'סיכום מוקד'}.issubset(set(wb.sheetnames))
     finally:
         os.unlink(path)
