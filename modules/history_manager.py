@@ -8,7 +8,7 @@ _REPO_FILE_PATH = "data/history.json"
 # Session-state cache key — used instead of module-level _mem so the cache is
 # guaranteed to be shared between save_month() and load_history() within the
 # same user session, even across screen navigations on Streamlit Cloud.
-_SS_CACHE_KEY = "__history_data__"
+_SS_CACHE_KEY = "kpi_history"
 
 
 def _cache_get():

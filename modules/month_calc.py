@@ -119,13 +119,23 @@ def build_snapshot(res, month_label):
     """Build history snapshot dict from computed results."""
     kpi_data   = res["kpi_data"]
     bonus_data = res["bonus_data"]
+    billing    = res["billing"]
+    n = len(kpi_data) or 1
     return {
         "month":             month_label.strip(),
         "label":             month_label,
+        # Center-level metrics
         "center_rate":       res["center_rate"],
         "center_met_target": res["center_meets"],
         "manager_bonus":     res["manager_bonus"],
-        "total_billing":     res["billing"]["phoenix_billing"],
+        "total_billing":     billing["phoenix_billing"],
+        "total_meetings":    sum(k["meetings"] for k in kpi_data),
+        "total_hours":       billing["total_hours"],
+        "total_phoenix":     billing["phoenix_count"],
+        "avg_occupancy_pct": sum(k["occupancy_pct"] for k in kpi_data) / n,
+        "avg_idle_pct":      sum(k["idle_pct"] for k in kpi_data) / n,
+        "total_agent_bonus": sum(b["total"] for b in bonus_data),
+        # Per-agent breakdown
         "agents": [{
             "name":              k["name"],
             "hours":             k["hours"],

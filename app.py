@@ -42,7 +42,9 @@ PAGES = {
     "⚙️ הגדרות":          settings_screen,
 }
 
-_NAV_KEY = "_nav_radio"
+_PAGE_KEY = "_current_page"
+_NAV_KEY  = "_nav_radio"
+_page_list = list(PAGES.keys())
 
 # Volta Solar V logo — triangular striped arms
 _LOGO = (
@@ -62,15 +64,28 @@ _LOGO = (
     '</svg>'
 )
 
-# Support programmatic navigation: set st.session_state['nav_goto'] = page_name
-# from any screen and call st.rerun() to jump to that page.
-# Use get+del instead of pop() — Streamlit's session_state implementation
-# can behave unexpectedly with pop() on some versions.
-nav_to = st.session_state.get("nav_goto")
-if "nav_goto" in st.session_state:
-    del st.session_state["nav_goto"]
+# ── Navigation ────────────────────────────────────────────────────────────
+# _current_page is the single source of truth for which page to render.
+# The radio widget (key=_nav_radio) provides user interaction; on_change
+# keeps _current_page in sync.  Programmatic navigation sets _current_page
+# directly (and tries to sync _nav_radio, though widget-state pre-setting
+# is not always reliable in all Streamlit versions — _current_page is the
+# authoritative fallback).
+
+if _PAGE_KEY not in st.session_state:
+    st.session_state[_PAGE_KEY] = _page_list[0]
+
+nav_to = st.session_state.pop("nav_goto", None)
 if nav_to and nav_to in PAGES:
-    st.session_state[_NAV_KEY] = nav_to
+    st.session_state[_PAGE_KEY] = nav_to
+    st.session_state[_NAV_KEY]  = nav_to  # best-effort radio sync
+
+current_page = st.session_state[_PAGE_KEY]
+
+
+def _on_nav_change():
+    st.session_state[_PAGE_KEY] = st.session_state[_NAV_KEY]
+
 
 with st.sidebar:
     st.markdown(
@@ -82,7 +97,7 @@ with st.sidebar:
         f'<div style="height:1px;background:linear-gradient(90deg,transparent,rgba(245,168,0,0.3),transparent);margin:0 16px 20px;"></div>',
         unsafe_allow_html=True,
     )
-    selection = st.radio("ניווט", list(PAGES.keys()), label_visibility="collapsed",
-                         key=_NAV_KEY)
+    st.radio("ניווט", _page_list, label_visibility="collapsed",
+             key=_NAV_KEY, on_change=_on_nav_change)
 
-PAGES[selection].render()
+PAGES[current_page].render()

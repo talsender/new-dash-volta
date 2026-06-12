@@ -64,8 +64,6 @@ def _add_month_from_excel():
             snapshot = build_snapshot(res, month_label)
             save_src = save_month(snapshot)
             st.toast(f"✅ חודש {month_label} נשמר ({_SAVE_LABELS.get(save_src, 'נשמר')})")
-            if "__history_data__" in st.session_state:
-                del st.session_state["__history_data__"]
             st.rerun()
 
 
@@ -111,14 +109,20 @@ def render():
 
     labels = [h["label"] for h in history]
 
-    ui.section_header("סיכום חודשים")
+    ui.section_header("סיכום חודשים — ביצועי מוקד")
     st.dataframe(
         [{
-            "חודש": h["label"],
-            "קצב מוקד": f"{h['center_rate']:.2f}",
-            "עמד ביעד": "✅" if h["center_met_target"] else "❌",
-            "בונוס מנהל ₪": f"{h['manager_bonus']:,}",
-            "חיוב ללקוח ₪": f"{h['total_billing']:,}",
+            "חודש":            h["label"],
+            "קצב מוקד":        f"{h['center_rate']:.2f}",
+            "עמד ביעד":        "✅" if h["center_met_target"] else "❌",
+            "תיאומים כולל":   h.get("total_meetings", "—"),
+            "שעות כולל":       f"{h.get('total_hours', 0):.1f}",
+            "פניקס כולל":      h.get("total_phoenix", "—"),
+            "תעסוקה ממוצעת":  f"{h.get('avg_occupancy_pct', 0)*100:.1f}%",
+            "סרק ממוצע":       f"{h.get('avg_idle_pct', 0)*100:.2f}%",
+            "בונוס מנהל ₪":    f"{h['manager_bonus']:,}",
+            "בונוס נציגים ₪":  f"{h.get('total_agent_bonus', 0):,}",
+            "חיוב ללקוח ₪":   f"{h['total_billing']:,}",
         } for h in history],
         use_container_width=True,
     )
