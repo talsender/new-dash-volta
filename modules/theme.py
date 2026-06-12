@@ -39,17 +39,19 @@ _CSS = """
 ══════════════════════════════════════════════ */
 body { direction: rtl !important; }
 
-/* Apply Heebo to everything EXCEPT Streamlit icon-font spans.
-   Using :not() ensures the icon spans are never touched by this rule,
-   so Streamlit's own CSS (which loads Material Symbols Rounded) can
-   apply the correct icon font without any override battle. */
-*:not([data-testid="stIconMaterial"]) {
-  font-family: 'Heebo', 'Arial Hebrew', Arial, sans-serif !important;
-  box-sizing: border-box;
-}
+* { font-family: 'Heebo', 'Arial Hebrew', Arial, sans-serif !important; box-sizing: border-box; }
+
+/* Streamlit 1.35+ renders icon names (e.g. "keyboard_arrow_right") as
+   text inside stIconMaterial spans, relying on Material Symbols font
+   ligatures. That font does not load reliably, so we hide the raw text
+   entirely and replace expander toggles with a pure-CSS arrow. */
 [data-testid="stIconMaterial"] {
-  box-sizing: border-box;
-  direction: ltr !important;
+  font-size:   0 !important;
+  line-height: 0 !important;
+  user-select: none !important;
+  overflow:    hidden !important;
+  width:       0 !important;
+  display:     inline-block !important;
 }
 
 /* ══════════════════════════════════════════════
@@ -346,6 +348,22 @@ details summary {
   cursor: pointer !important;
   list-style: none !important;
   user-select: none !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+}
+/* CSS arrow — replaces the hidden stIconMaterial text */
+[data-testid="stExpander"] summary::before {
+  content: "▶" !important;
+  font-size: 11px !important;
+  color: var(--txt-sub) !important;
+  transition: transform 0.2s ease !important;
+  display: inline-block !important;
+  flex-shrink: 0 !important;
+  order: -1 !important;
+}
+[data-testid="stExpander"] details[open] > summary::before {
+  transform: rotate(90deg) !important;
 }
 [data-testid="stExpander"] summary:hover { background: rgba(255,255,255,0.03) !important; }
 
