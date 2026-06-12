@@ -181,7 +181,7 @@ def render():
     st.markdown("---")
     ui.section_header("פירוט לנציגים")
     for k, b in zip(kpi_data, bonus_data):
-        with st.expander(f"{k['name']}  —  סה\"כ ₪{b['total']:,}"):
+        with st.expander(f"{k['name']}  —  סה\"כ ₪{b['total']:,}", key=f"exp_{k['agent_id']}"):
             c1, c2, c3, c4, c5 = st.columns(5)
             c1.metric("שעות",        f"{k['hours']:.1f}")
             c2.metric("תיאומים",     k["meetings"])
@@ -227,7 +227,7 @@ def render():
 
     ui.section_header("שליחת מיילים", step=4)
     client_html = build_monthly_client_email(billing, month_label)
-    with st.expander("תצוגה מקדימה — מייל ללקוח"):
+    with st.expander("תצוגה מקדימה — מייל ללקוח", key="exp_client_preview"):
         st.components.v1.html(client_html, height=300, scrolling=True)
 
     confirmed = st.checkbox("בדקתי ואישרתי את כל המיילים")

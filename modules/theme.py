@@ -3,6 +3,7 @@ import streamlit as st
 
 _CSS = """
 @import url('https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800;900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,0,0&display=swap');
 
 /* ══════════════════════════════════════════════
    CSS VARIABLES
@@ -30,9 +31,36 @@ _CSS = """
 
 /* ══════════════════════════════════════════════
    RTL + FONT
+   Note: direction:rtl applied to body+app only,
+   NOT html root — keeping html as LTR prevents
+   Streamlit Cloud fixed-position UI elements
+   (toolbar, AI hints, keyboard badges) from
+   being displaced onto content areas.
 ══════════════════════════════════════════════ */
-html, body { direction: rtl !important; }
+body { direction: rtl !important; }
 * { font-family: 'Heebo', 'Arial Hebrew', Arial, sans-serif !important; box-sizing: border-box; }
+
+/* Restore Material Symbols font for Streamlit 1.35+ icon spans.
+   The * selector above overrides the icon font and displays raw icon
+   names (e.g. "keyboard_arrow_down") as visible text instead of symbols.
+   We import Material Symbols Rounded explicitly and reapply all required
+   font properties with higher specificity. */
+[data-testid="stIconMaterial"] {
+  font-family: 'Material Symbols Rounded', 'Material Icons', sans-serif !important;
+  font-weight: normal !important;
+  font-style: normal !important;
+  font-size: 24px !important;
+  line-height: 1 !important;
+  letter-spacing: normal !important;
+  text-transform: none !important;
+  white-space: nowrap !important;
+  direction: ltr !important;
+  display: inline-block !important;
+  -webkit-font-smoothing: antialiased !important;
+  text-rendering: optimizeLegibility !important;
+  font-feature-settings: 'liga' !important;
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24 !important;
+}
 
 /* ══════════════════════════════════════════════
    APP BACKGROUND — dot grid + radial glows

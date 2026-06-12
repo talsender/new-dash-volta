@@ -42,7 +42,7 @@ def render():
     finally:
         os.unlink(att_path); os.unlink(vc_path)
 
-    with st.expander("אבחון — נתונים שנקראו מהקבצים"):
+    with st.expander("אבחון — נתונים שנקראו מהקבצים", key="exp_debug"):
         st.write("**נוכחות — עמודות:**", list(att_df.columns))
         st.write("**נוכחות — שורות לדוגמה:**")
         st.dataframe(att_df.head(5))
@@ -120,7 +120,7 @@ def render():
 
     ui.section_header("שליחת מיילים", step=4)
     mgmt_html = build_weekly_management_email(kpi_data, week_label)
-    with st.expander("תצוגה מקדימה — מייל הנהלה"):
+    with st.expander("תצוגה מקדימה — מייל הנהלה", key="exp_mgmt_preview"):
         st.components.v1.html(mgmt_html, height=400, scrolling=True)
 
     confirmed = st.checkbox("בדקתי ואישרתי את התצוגה המקדימה")
