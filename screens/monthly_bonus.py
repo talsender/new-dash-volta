@@ -8,7 +8,7 @@ from modules.calculator import (calculate_work_hours, calculate_meetings_per_hou
 from modules.config_manager import load_agents, load_settings
 from modules.email_builder import (build_monthly_client_email, build_monthly_agent_email)
 from modules.email_sender import send_email
-from modules.excel_exporter import export_monthly_bonus
+from modules.excel_exporter import export_monthly_bonus, export_agent_bonus
 from modules.history_manager import save_month
 from modules import ui
 
@@ -73,12 +73,11 @@ def render():
     for agent in agents:
         hours = calculate_work_hours(att_df, agent["employee_id"])
         inp = manual[agent["id"]]
-        first_name = agent['name'].split()[0]
-        vc_row = vc_df[vc_df['משתמש'].str.contains(first_name, na=False, regex=False)]
-        if len(vc_row) > 1:
-            exact = vc_df[vc_df['משתמש'].str.contains(agent['name'], na=False, regex=False)]
-            if len(exact) >= 1:
-                vc_row = exact
+        vc_name = agent.get('voicenter_name') or agent['name']
+        vc_row = vc_df[vc_df['משתמש'].str.lower().str.contains(vc_name.lower(), na=False, regex=False)]
+        if not len(vc_row):
+            first_name = agent['name'].split()[0]
+            vc_row = vc_df[vc_df['משתמש'].str.contains(first_name, na=False, regex=False)]
         answered = int(vc_row['נענו'].iloc[0]) if len(vc_row) else 0
         occ_pct  = float(vc_row['אחוז תעסוקה נטו'].iloc[0]) if len(vc_row) else 0.0
         kpi_data.append({
@@ -144,12 +143,52 @@ def render():
         save_month(snapshot)
         st.success(f"חודש {month_label} נשמר להיסטוריה ✅")
 
+    # ── per-agent cards ──────────────────────────────────────────────────────
+    st.markdown("---")
+    ui.section_header("פירוט לנציגים")
+    for k, b in zip(kpi_data, bonus_data):
+        with st.expander(f"📋  {k['name']}  —  סה\"כ ₪{b['total']:,}"):
+            c1, c2, c3, c4, c5 = st.columns(5)
+            c1.metric("שעות",        f"{k['hours']:.1f}")
+            c2.metric("תיאומים",     k["meetings"])
+            c3.metric("תיאומים/שעה", f"{k['meetings_per_hour']:.2f}")
+            c4.metric("תעסוקה",      f"{k['occupancy_pct']*100:.1f}%")
+            c5.metric("סרק",         f"{k['idle_pct']*100:.2f}%")
+            st.dataframe(
+                [
+                    {"רכיב": "עמלת תיאומים",    "₪": b["meetings_bonus"]},
+                    {"רכיב": "בונוס תעסוקה",    "₪": b["occupancy_bonus"]},
+                    {"רכיב": "בונוס סרק",        "₪": b["idle_bonus"]},
+                    {"רכיב": "בונוס משוב",       "₪": b["feedback_bonus"]},
+                    {"רכיב": "בונוס פניקס",      "₪": b["phoenix_bonus"]},
+                    {"רכיב": 'סה"כ',             "₪": b["total"]},
+                ],
+                use_container_width=True, hide_index=True,
+            )
+            with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as af:
+                af_path = af.name
+            export_agent_bonus(k, b, month_label, af_path, center_meets=center_meets)
+            with open(af_path, "rb") as af:
+                st.download_button(
+                    f"📥 הורד Excel אישי — {k['name']}",
+                    af.read(),
+                    file_name=f"bonus_{k['name']}_{month_label}.xlsx",
+                    key=f"dl_{k['agent_id']}",
+                )
+            os.unlink(af_path)
+
+    # ── center Excel download ────────────────────────────────────────────────
+    st.markdown("---")
     with tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False) as f:
         xl_path = f.name
-    export_monthly_bonus(bonus_data, billing, month_label, xl_path)
+    export_monthly_bonus(bonus_data, billing, month_label, xl_path,
+                         kpi_data=kpi_data,
+                         manager_bonus=manager_bonus,
+                         manager_name="טל סנדר",
+                         center_meets=center_meets)
     with open(xl_path, 'rb') as f:
         xl_bytes = f.read()
-    st.download_button("📥 הורד Excel", xl_bytes, file_name=f"bonuses_{month_label}.xlsx")
+    st.download_button("📥 הורד Excel מוקד מלא", xl_bytes, file_name=f"bonuses_{month_label}.xlsx")
     os.unlink(xl_path)
 
     ui.section_header("שליחת מיילים", step=4)
@@ -179,6 +218,11 @@ def render():
                 if not k.get("email"):
                     st.warning(f"חסר מייל: {k['name']}"); continue
                 html = build_monthly_agent_email(k, b, k["name"], month_label)
+                agent_xl = tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False)
+                agent_xl.close()
+                export_agent_bonus(k, b, month_label, agent_xl.name)
                 r = send_email(smtp, password, [k["email"]],
-                               f"בונוס חודש {month_label}", html)
+                               f"בונוס חודש {month_label}", html,
+                               attachment_path=agent_xl.name)
+                os.unlink(agent_xl.name)
                 st.success(f"נשלח ל-{k['name']} ✅") if r.success else st.error(f"{k['name']}: {r.error}")
