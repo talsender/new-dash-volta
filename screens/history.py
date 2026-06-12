@@ -1,9 +1,12 @@
 # screens/history.py
 import streamlit as st
 import json
+import pandas as pd
 from modules.history_manager import load_history, save_month
 from modules.month_calc import compute_month, build_snapshot
 from modules.config_manager import load_agents, load_settings
+from modules.file_manager import (list_export_files, read_export_file,
+                                   delete_export_file)
 from modules import ui
 
 try:
@@ -69,6 +72,71 @@ def _add_month_from_excel():
             st.rerun()
 
 
+def _files_section():
+    ui.section_header("ניהול קבצי Excel")
+    files = list_export_files()
+    if not files:
+        st.caption("אין קבצים שמורים. בעת שמירת חודש, קובץ Excel מלא יישמר כאן.")
+        return
+
+    st.caption(f"{len(files)} קבצים שמורים — ניתן לצפות, להוריד או למחוק.")
+    for f in files:
+        name     = f["name"]
+        modified = f["modified"].strftime("%d/%m/%Y %H:%M")
+        with st.expander(f"📄 {name}  —  {f['size_kb']:.0f}KB  |  {modified}"):
+            v, d, x = st.columns(3)
+
+            with d:
+                st.download_button(
+                    "📥 הורד", read_export_file(name),
+                    file_name=name,
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    key=f"dl_file_{name}",
+                )
+
+            view_key = f"view_{name}"
+            with v:
+                if st.button("👁 צפה", key=f"btn_view_{name}"):
+                    st.session_state[view_key] = not st.session_state.get(view_key, False)
+
+            del_key = f"confirm_del_{name}"
+            with x:
+                if st.button("🗑 מחק", key=f"btn_del_{name}"):
+                    st.session_state[del_key] = True
+
+            if st.session_state.get(del_key):
+                st.warning(f"למחוק את {name}? פעולה זו בלתי הפיכה.")
+                yes, no = st.columns(2)
+                if yes.button("כן, מחק", key=f"yes_del_{name}"):
+                    delete_export_file(name)
+                    st.session_state.pop(del_key, None)
+                    st.session_state.pop(view_key, None)
+                    st.success(f"{name} נמחק ✅")
+                    st.rerun()
+                if no.button("ביטול", key=f"no_del_{name}"):
+                    st.session_state.pop(del_key, None)
+                    st.rerun()
+
+            if st.session_state.get(view_key):
+                _preview_excel(read_export_file(name))
+
+
+def _preview_excel(data: bytes):
+    import io
+    try:
+        sheets = pd.read_excel(io.BytesIO(data), sheet_name=None, header=None)
+    except Exception as e:
+        st.error(f"שגיאה בקריאת הקובץ: {e}")
+        return
+    if not sheets:
+        st.caption("הקובץ ריק.")
+        return
+    tabs = st.tabs(list(sheets.keys()))
+    for tab, df in zip(tabs, sheets.values()):
+        with tab:
+            st.dataframe(df, use_container_width=True, hide_index=True)
+
+
 def _upload_json_section():
     uploaded = st.file_uploader("📤 העלה היסטוריה (JSON)", type=["json"], key="hist_upload")
     if uploaded:
@@ -82,7 +150,6 @@ def _upload_json_section():
 def render():
     ui.page_header("היסטוריה וניתוח", icon="📈", subtitle="מגמות ביצועים לאורך זמן")
 
-    # GitHub persistence status
     try:
         token    = st.secrets.get("GITHUB_TOKEN", "")
         repo     = st.secrets.get("GITHUB_REPO",  "")
@@ -106,6 +173,7 @@ def render():
     if not history:
         st.info("אין נתונים היסטוריים עדיין. לאחר חישוב חודשי לחץ 'שמור חודש להיסטוריה'.")
         _add_month_from_excel()
+        _files_section()
         _upload_json_section()
         return
 
@@ -179,7 +247,9 @@ def render():
                 st.json(h)
 
     st.markdown("<hr/>", unsafe_allow_html=True)
+    _files_section()
 
+    st.markdown("<hr/>", unsafe_allow_html=True)
     c1, c2 = st.columns(2)
     with c1:
         st.download_button(
