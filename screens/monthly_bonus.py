@@ -199,14 +199,22 @@ def render():
                 "bonus_total": b["total"],
             } for k, b in zip(kpi_data, bonus_data)]
         }
+        _save_err = None
+        _save_src = None
         try:
-            source = save_month(snapshot)
-            label = "GitHub — קבוע" if source == "github" else "מקומי"
-            st.toast(f"✅ חודש {month_label} נשמר ({label})")
+            _save_src = save_month(snapshot)
+        except Exception as e:
+            _save_err = str(e)
+
+        if _save_err:
+            st.error(f"שגיאה בשמירה: {_save_err}")
+        else:
+            # st.rerun() raises a Streamlit-internal exception that must NOT
+            # be inside an except-Exception block or it will be swallowed.
+            _label = "GitHub — קבוע" if _save_src == "github" else "מקומי"
+            st.toast(f"✅ חודש {month_label} נשמר ({_label})")
             st.session_state["nav_goto"] = "📈 היסטוריה"
             st.rerun()
-        except Exception as e:
-            st.error(f"שגיאה בשמירה: {e}")
 
     # ── Per-agent cards ──────────────────────────────────────────────────────
     st.markdown("---")
