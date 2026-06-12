@@ -4,7 +4,8 @@ import pandas as pd
 def calculate_work_hours(attendance_df: pd.DataFrame, employee_id: int) -> float:
     emp = attendance_df[attendance_df['מספר עובד'] == employee_id]
     working = emp[emp['סה"כ כללי'] > 0]
-    return max(0.0, float(working['סה"כ כללי'].sum()) - len(working))
+    full_days = working[working['סה"כ כללי'] >= 1]
+    return max(0.0, float(working['סה"כ כללי'].sum()) - len(full_days))
 
 
 def calculate_meetings_per_hour(meetings: int, hours: float) -> float:

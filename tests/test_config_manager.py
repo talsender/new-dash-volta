@@ -33,3 +33,12 @@ def test_load_settings_returns_dict():
         assert result["bonus_thresholds"]["meetings_per_hour_tier_a"] == 1.0
     finally:
         os.unlink(f.name)
+
+def test_load_agents_missing_file_returns_empty():
+    result = load_agents('/nonexistent/path/agents.json')
+    assert result == []
+
+def test_load_settings_missing_file_raises_with_message():
+    import pytest
+    with pytest.raises(FileNotFoundError, match="settings.json"):
+        load_settings('/nonexistent/path/settings.json')

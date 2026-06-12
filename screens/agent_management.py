@@ -1,13 +1,15 @@
 # screens/agent_management.py
 import streamlit as st
 from modules.config_manager import load_agents, save_agents
+from modules import ui
 
 
 def render():
-    st.header("ניהול נציגים")
+    ui.page_header("ניהול נציגים", icon="👥", subtitle="הוספה, עריכה והסרה של נציגים")
+
     agents = load_agents()
 
-    st.subheader("נציגים קיימים")
+    ui.section_header("נציגים קיימים")
     for i, agent in enumerate(agents):
         with st.container():
             c1, c2, c3, c4, c5, c6 = st.columns([2, 2, 2, 2, 1, 1])
@@ -19,14 +21,14 @@ def render():
             with c3:
                 agents[i]["voicenter_name"] = st.text_input(
                     "שם ב-Voicenter", agent.get("voicenter_name", ""), key=f"vc_{i}",
-                    help="השם כפי שמופיע בדוח Voicenter (אנגלית/עברית)")
+                    help="השם כפי שמופיע בדוח Voicenter")
             with c4:
                 agents[i]["email"] = st.text_input("מייל", agent.get("email", ""), key=f"m_{i}")
             with c5:
                 agents[i]["active"] = st.checkbox("פעיל", agent.get("active", True), key=f"a_{i}")
             with c6:
                 st.markdown("<br>", unsafe_allow_html=True)
-                if st.button("🗑️ הסר", key=f"d_{i}"):
+                if st.button("🗑️", key=f"d_{i}"):
                     agents.pop(i)
                     save_agents(agents)
                     st.rerun()
@@ -35,8 +37,9 @@ def render():
         save_agents(agents)
         st.success("נשמר בהצלחה ✅")
 
-    st.divider()
-    st.subheader("➕ הוספת נציג חדש")
+    st.markdown("<hr/>", unsafe_allow_html=True)
+
+    ui.section_header("הוספת נציג חדש")
     with st.form("add_agent"):
         col1, col2 = st.columns(2)
         with col1:

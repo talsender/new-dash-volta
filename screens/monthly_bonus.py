@@ -10,6 +10,7 @@ from modules.email_builder import (build_monthly_client_email, build_monthly_age
 from modules.email_sender import send_email
 from modules.excel_exporter import export_monthly_bonus
 from modules.history_manager import save_month
+from modules import ui
 
 
 def _save_upload(uploaded, suffix):
@@ -19,12 +20,13 @@ def _save_upload(uploaded, suffix):
 
 
 def render():
-    st.header("בונוסים חודשיים")
+    ui.page_header("בונוסים חודשיים", icon="💰", subtitle="חישוב בונוסים, Excel ושליחת מיילים")
+
     agents = [a for a in load_agents() if a["active"]]
     settings = load_settings()
     t = settings["bonus_thresholds"]
 
-    st.subheader("1. העלאת קבצים")
+    ui.section_header("העלאת קבצים", step=1)
     c1, c2, c3 = st.columns(3)
     att_file = c1.file_uploader("נוכחות (.xlsx)", type=['xlsx'], key="b_att")
     vc_file  = c2.file_uploader("Voicenter (.xls)", type=['xls','xlsx'], key="b_vc")
@@ -47,16 +49,20 @@ def render():
         for p in [att_path, vc_path, fb_path]:
             if p: os.unlink(p)
 
-    st.subheader("2. הזנה ידנית")
+    ui.section_header("הזנה ידנית", step=2)
     month_label = st.text_input("חודש", "יוני 2026")
     manual = {}
     cols = st.columns(len(agents))
     for col, agent in zip(cols, agents):
         with col:
-            st.markdown(f"**{agent['name']}**")
+            st.markdown(
+                f'<div style="color:#F5A800;font-weight:700;font-size:15px;'
+                f'text-align:right;margin-bottom:8px;">{agent["name"]}</div>',
+                unsafe_allow_html=True,
+            )
             manual[agent["id"]] = {
-                "meetings":   st.number_input("תיאומים",  min_value=0, key=f"bm_{agent['id']}"),
-                "phoenix":    st.number_input("פניקס",    min_value=0, key=f"bp_{agent['id']}"),
+                "meetings":   st.number_input("תיאומים",   min_value=0, key=f"bm_{agent['id']}"),
+                "phoenix":    st.number_input("פניקס",     min_value=0, key=f"bp_{agent['id']}"),
                 "idle_calls": st.number_input("שיחות סרק", min_value=0, key=f"bi_{agent['id']}"),
             }
 
@@ -67,7 +73,12 @@ def render():
     for agent in agents:
         hours = calculate_work_hours(att_df, agent["employee_id"])
         inp = manual[agent["id"]]
-        vc_row = vc_df[vc_df['משתמש'].str.contains(agent['name'].split()[0], na=False)]
+        first_name = agent['name'].split()[0]
+        vc_row = vc_df[vc_df['משתמש'].str.contains(first_name, na=False, regex=False)]
+        if len(vc_row) > 1:
+            exact = vc_df[vc_df['משתמש'].str.contains(agent['name'], na=False, regex=False)]
+            if len(exact) >= 1:
+                vc_row = exact
         answered = int(vc_row['נענו'].iloc[0]) if len(vc_row) else 0
         occ_pct  = float(vc_row['אחוז תעסוקה נטו'].iloc[0]) if len(vc_row) else 0.0
         kpi_data.append({
@@ -99,35 +110,34 @@ def render():
                "phoenix_count": total_phoenix,
                "phoenix_billing": total_phoenix * t["phoenix_client_rate"]}
 
-    st.subheader("3. תוצאות")
+    ui.section_header("תוצאות", step=3)
     c_a, c_b = st.columns(2)
     c_a.metric("קצב מוקד", f"{center_rate:.2f}/שעה",
                delta="✅ עמד ביעד" if center_meets else "❌ לא עמד")
     c_b.metric("בונוס מנהל", f"₪{manager_bonus:,}")
-    st.dataframe([{
-        "נציג": b["name"], "תיאומים ₪": b["meetings_bonus"],
-        "תעסוקה ₪": b["occupancy_bonus"], "סרק ₪": b["idle_bonus"],
-        "משוב ₪": b["feedback_bonus"], "פניקס ₪": b["phoenix_bonus"],
-        "סה\"כ ₪": b["total"],
-    } for b in bonus_data], use_container_width=True)
+    st.dataframe(
+        [{
+            "נציג": b["name"], "תיאומים ₪": b["meetings_bonus"],
+            "תעסוקה ₪": b["occupancy_bonus"], "סרק ₪": b["idle_bonus"],
+            "משוב ₪": b["feedback_bonus"], "פניקס ₪": b["phoenix_bonus"],
+            "סה\"כ ₪": b["total"],
+        } for b in bonus_data],
+        use_container_width=True,
+    )
 
     if st.button("💾 שמור חודש להיסטוריה"):
         snapshot = {
-            "month": month_label[:7] if len(month_label) >= 7 else month_label,
+            "month": month_label.strip(),
             "label": month_label,
             "center_rate": center_rate,
             "center_met_target": center_meets,
             "manager_bonus": manager_bonus,
             "total_billing": billing["phoenix_billing"],
             "agents": [{
-                "name": k["name"],
-                "hours": k["hours"],
-                "meetings": k["meetings"],
+                "name": k["name"], "hours": k["hours"], "meetings": k["meetings"],
                 "meetings_per_hour": k["meetings_per_hour"],
-                "occupancy_pct": k["occupancy_pct"],
-                "idle_pct": k["idle_pct"],
-                "feedback_score": k["feedback_score"],
-                "phoenix": k["phoenix"],
+                "occupancy_pct": k["occupancy_pct"], "idle_pct": k["idle_pct"],
+                "feedback_score": k["feedback_score"], "phoenix": k["phoenix"],
                 "bonus_total": b["total"],
             } for k, b in zip(kpi_data, bonus_data)]
         }
@@ -142,9 +152,9 @@ def render():
     st.download_button("📥 הורד Excel", xl_bytes, file_name=f"bonuses_{month_label}.xlsx")
     os.unlink(xl_path)
 
-    st.subheader("4. שליחת מיילים")
+    ui.section_header("שליחת מיילים", step=4)
     client_html = build_monthly_client_email(billing, month_label)
-    with st.expander("תצוגה מקדימה — מייל ללקוח"):
+    with st.expander("📧 תצוגה מקדימה — מייל ללקוח"):
         st.components.v1.html(client_html, height=300, scrolling=True)
 
     confirmed = st.checkbox("בדקתי ואישרתי את כל המיילים")
@@ -158,11 +168,11 @@ def render():
         if st.button("שלח ללקוח (וולטה) + Excel"):
             with tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False) as f:
                 xl2 = f.name
-            export_monthly_bonus(bonus_data, billing, month_label, xl2)
+                f.write(xl_bytes)
             r = send_email(smtp, password, settings["recipients"]["client"],
                            f"חיוב חודש {month_label}", client_html, attachment_path=xl2)
             os.unlink(xl2)
-            st.success("נשלח ללקוח") if r.success else st.error(r.error)
+            st.success("נשלח ללקוח ✅") if r.success else st.error(r.error)
     with c2:
         if st.button("שלח בונוסים לכל נציג"):
             for k, b in zip(kpi_data, bonus_data):
@@ -171,4 +181,4 @@ def render():
                 html = build_monthly_agent_email(k, b, k["name"], month_label)
                 r = send_email(smtp, password, [k["email"]],
                                f"בונוס חודש {month_label}", html)
-                st.success(f"נשלח ל-{k['name']}") if r.success else st.error(f"{k['name']}: {r.error}")
+                st.success(f"נשלח ל-{k['name']} ✅") if r.success else st.error(f"{k['name']}: {r.error}")

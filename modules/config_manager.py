@@ -6,6 +6,8 @@ _SETTINGS_PATH = os.path.join(_DIR, 'settings.json')
 
 
 def load_agents(path: str = _AGENTS_PATH) -> list:
+    if not os.path.exists(path):
+        return []
     with open(path, encoding='utf-8') as f:
         return json.load(f)
 
@@ -16,6 +18,8 @@ def save_agents(agents: list, path: str = _AGENTS_PATH) -> None:
 
 
 def load_settings(path: str = _SETTINGS_PATH) -> dict:
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"settings.json לא נמצא: {path}")
     with open(path, encoding='utf-8') as f:
         return json.load(f)
 

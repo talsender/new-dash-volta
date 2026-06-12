@@ -34,6 +34,19 @@ def test_work_hours_unknown_employee():
     df = _df([{'מספר עובד': 96186, 'סה"כ כללי': 8.0}])
     assert calculate_work_hours(df, 99999) == pytest.approx(0.0)
 
+def test_work_hours_partial_day_no_lunch_deduction():
+    # A day under 1h should not trigger the 1h lunch deduction
+    df = _df([{'מספר עובד': 96186, 'סה"כ כללי': 0.5}])
+    assert calculate_work_hours(df, 96186) == pytest.approx(0.5)
+
+def test_work_hours_mixed_full_and_partial_days():
+    # 8h full day → deduct 1h; 0.5h partial day → no deduction
+    df = _df([
+        {'מספר עובד': 96186, 'סה"כ כללי': 8.0},
+        {'מספר עובד': 96186, 'סה"כ כללי': 0.5},
+    ])
+    assert calculate_work_hours(df, 96186) == pytest.approx(7.5)  # (8+0.5) - 1
+
 # ── Meetings per hour ─────────────────────────────────────
 def test_meetings_per_hour_normal():
     assert calculate_meetings_per_hour(80, 70.0) == pytest.approx(80 / 70, rel=0.01)

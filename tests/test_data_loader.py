@@ -101,3 +101,33 @@ def test_parse_feedback_missing_agent_is_absent():
         assert result.get("אלינור") is None
     finally:
         os.unlink(path)
+
+
+def test_parse_voicenter_occupancy_integer_column():
+    # Voicenter sometimes exports occupancy as plain integer (35) not string "35%"
+    # The parser must still divide by 100 to produce 0.35
+    path = _make_voicenter([
+        {'משתמש': 'טום', 'סה"כ שיחות': 200, 'נענו': 190,
+         'שיחות שלא נענו': 10, 'אחוז תעסוקה נטו': 35}
+    ])
+    try:
+        df = parse_voicenter(path)
+        assert df.iloc[0]['אחוז תעסוקה נטו'] == pytest.approx(0.35), \
+            "Integer occupancy (35) must be divided by 100 to yield 0.35"
+    finally:
+        os.unlink(path)
+
+
+def test_parse_voicenter_filters_total_rows():
+    path = _make_voicenter([
+        {'משתמש': 'טום', 'סה"כ שיחות': 200, 'נענו': 190,
+         'שיחות שלא נענו': 10, 'אחוז תעסוקה נטו': '35%'},
+        {'משתמש': 'סה"כ', 'סה"כ שיחות': 200, 'נענו': 190,
+         'שיחות שלא נענו': 10, 'אחוז תעסוקה נטו': '35%'},
+    ])
+    try:
+        df = parse_voicenter(path)
+        assert len(df) == 1, "Total/summary row labeled סה\"כ must be dropped"
+        assert df.iloc[0]['משתמש'] == 'טום'
+    finally:
+        os.unlink(path)
