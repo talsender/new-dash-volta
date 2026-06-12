@@ -105,13 +105,23 @@ def parse_voicenter(filepath: str) -> pd.DataFrame:
 
 
 def parse_feedback(filepath: str) -> dict:
+    import openpyxl
     scores = {}
-    with pd.ExcelFile(filepath, engine='openpyxl') as xl:
-        for sheet in xl.sheet_names:
-            df = xl.parse(sheet, header=None)
-            mask = df.iloc[:, 0].astype(str).str.contains('ציון משוב', na=False)
-            if mask.any():
-                score = pd.to_numeric(df.loc[mask.idxmax(), 1], errors='coerce')
-                if not pd.isna(score):
-                    scores[sheet] = float(score)
+    wb = openpyxl.load_workbook(filepath, data_only=True)
+    for sname in wb.sheetnames:
+        ws = wb[sname]
+        for row in ws.iter_rows(values_only=True):
+            if not row:
+                continue
+            label = str(row[0]).strip() if row[0] is not None else ""
+            if label in ('ציון משוב', 'ציון האזנה'):
+                # find first numeric value in the row (column index >= 1)
+                for cell in row[1:]:
+                    try:
+                        score = float(cell)
+                        scores[sname.strip()] = score
+                        break
+                    except (TypeError, ValueError):
+                        continue
+                break
     return scores

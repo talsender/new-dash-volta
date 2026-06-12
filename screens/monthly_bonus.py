@@ -19,6 +19,20 @@ def _save_upload(uploaded, suffix):
     return f.name
 
 
+def _get_feedback(scores: dict, agent_name: str):
+    if not scores:
+        return None
+    # exact match
+    if agent_name in scores:
+        return scores[agent_name]
+    # sheet name is a first-name substring of the agent name
+    first = agent_name.split()[0]
+    for key, val in scores.items():
+        if first in key or key in agent_name:
+            return val
+    return None
+
+
 def render():
     ui.page_header("בונוסים חודשיים", icon="💰", subtitle="חישוב בונוסים, Excel ושליחת מיילים")
 
@@ -88,7 +102,7 @@ def render():
             "occupancy_pct": occ_pct, "idle_calls": inp["idle_calls"],
             "idle_pct": calculate_idle_pct(inp["idle_calls"], answered),
             "phoenix": inp["phoenix"],
-            "feedback_score": feedback_scores.get(agent["name"]),
+            "feedback_score": _get_feedback(feedback_scores, agent["name"]),
         })
 
     center_rate  = calculate_center_rate([{"hours": k["hours"], "meetings": k["meetings"]} for k in kpi_data])
