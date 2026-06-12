@@ -201,11 +201,10 @@ def render():
         }
         try:
             source = save_month(snapshot)
-            if source == "github":
-                st.success(f"✅ חודש {month_label} נשמר להיסטוריה (GitHub — קבוע)")
-            else:
-                st.success(f"✅ חודש {month_label} נשמר להיסטוריה (מקומי)")
-                st.warning("⚠️ כדי שההיסטוריה תישמר לאחר עדכון קוד — הגדר GITHUB_TOKEN ב-Streamlit Secrets", icon="⚠️")
+            label = "GitHub — קבוע" if source == "github" else "מקומי"
+            st.toast(f"✅ חודש {month_label} נשמר ({label})")
+            st.session_state["nav_goto"] = "📈 היסטוריה"
+            st.rerun()
         except Exception as e:
             st.error(f"שגיאה בשמירה: {e}")
 

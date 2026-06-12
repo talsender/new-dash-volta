@@ -42,6 +42,8 @@ PAGES = {
     "⚙️ הגדרות":          settings_screen,
 }
 
+_NAV_KEY = "_nav_radio"
+
 # Volta Solar V logo — triangular striped arms
 _LOGO = (
     '<svg viewBox="0 0 100 90" xmlns="http://www.w3.org/2000/svg" width="76" height="68">'
@@ -60,6 +62,12 @@ _LOGO = (
     '</svg>'
 )
 
+# Support programmatic navigation: set st.session_state['nav_goto'] = page_name
+# from any screen and call st.rerun() to jump to that page.
+nav_to = st.session_state.pop("nav_goto", None)
+if nav_to and nav_to in PAGES:
+    st.session_state[_NAV_KEY] = nav_to
+
 with st.sidebar:
     st.markdown(
         f'<div style="text-align:center;padding:28px 12px 20px;direction:rtl;">'
@@ -70,6 +78,7 @@ with st.sidebar:
         f'<div style="height:1px;background:linear-gradient(90deg,transparent,rgba(245,168,0,0.3),transparent);margin:0 16px 20px;"></div>',
         unsafe_allow_html=True,
     )
-    selection = st.radio("ניווט", list(PAGES.keys()), label_visibility="collapsed")
+    selection = st.radio("ניווט", list(PAGES.keys()), label_visibility="collapsed",
+                         key=_NAV_KEY)
 
 PAGES[selection].render()
