@@ -25,18 +25,41 @@ def parse_attendance(filepath: str) -> pd.DataFrame:
 
 
 def parse_voicenter(filepath: str) -> pd.DataFrame:
-    tables = pd.read_html(filepath, encoding='utf-16')
-    df = tables[0]
-    # Drop summary rows (totals have no user name or are labeled סה"כ)
+    for enc in ('utf-16', 'utf-8', 'windows-1255'):
+        try:
+            tables = pd.read_html(filepath, encoding=enc)
+            break
+        except Exception:
+            continue
+    else:
+        tables = pd.read_html(filepath)
+    # find the table that contains a 'משתמש'-like column
+    df = None
+    for t in tables:
+        t.columns = [str(c).strip() for c in t.columns]
+        if any('משתמש' in c for c in t.columns):
+            df = t
+            break
+    if df is None:
+        all_cols = [list(t.columns) for t in tables]
+        raise KeyError(f"לא נמצאה עמודת 'משתמש'. עמודות בטבלאות: {all_cols}")
+    user_col = next(c for c in df.columns if 'משתמש' in c)
+    df = df.rename(columns={user_col: 'משתמש'})
     df = df[df['משתמש'].notna() & ~df['משתמש'].astype(str).str.startswith('סה"כ')]
+    occ_col = next((c for c in df.columns if 'תעסוקה' in c), None)
+    if occ_col is None:
+        raise KeyError(f"לא נמצאה עמודת תעסוקה. עמודות: {list(df.columns)}")
+    df = df.rename(columns={occ_col: 'אחוז תעסוקה נטו'})
     occ = 'אחוז תעסוקה נטו'
-    # pandas 3.x returns StringDtype ('str') for string columns, not object
     if not pd.api.types.is_float_dtype(df[occ]) and not pd.api.types.is_integer_dtype(df[occ]):
         df[occ] = (df[occ].astype(str)
                           .str.replace('%', '', regex=False)
                           .str.strip()
                           .pipe(pd.to_numeric, errors='coerce') / 100)
-    df['נענו'] = pd.to_numeric(df['נענו'], errors='coerce').fillna(0).astype(int)
+    answered_col = next((c for c in df.columns if 'נענו' in c), None)
+    if answered_col:
+        df = df.rename(columns={answered_col: 'נענו'})
+    df['נענו'] = pd.to_numeric(df.get('נענו', 0), errors='coerce').fillna(0).astype(int)
     return df.reset_index(drop=True)
 
 
