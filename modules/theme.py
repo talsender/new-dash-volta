@@ -3,7 +3,6 @@ import streamlit as st
 
 _CSS = """
 @import url('https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800;900&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,0,0&display=swap');
 
 /* ══════════════════════════════════════════════
    CSS VARIABLES
@@ -39,25 +38,18 @@ _CSS = """
 ══════════════════════════════════════════════ */
 body { direction: rtl !important; }
 
-* { font-family: 'Heebo', 'Arial Hebrew', Arial, sans-serif !important; box-sizing: border-box; }
-
-/* Streamlit 1.35+ renders icon names (e.g. "keyboard_arrow_right") as
-   text inside stIconMaterial spans. The icon font does not load so the
-   raw text is visible. We use the sr-only + clip-path technique to
-   visually erase the element entirely without removing it from the DOM. */
-[data-testid="stIconMaterial"] {
-  position:   absolute !important;
-  width:      1px     !important;
-  height:     1px     !important;
-  padding:    0       !important;
-  margin:     -1px    !important;
-  overflow:   hidden  !important;
-  clip:       rect(0,0,0,0) !important;
-  clip-path:  inset(50%) !important;
-  white-space: nowrap  !important;
-  border:     0       !important;
-  font-size:  0       !important;
-  color:      transparent !important;
+/* Apply Heebo WITHOUT !important on the universal selector.
+   This lets Streamlit's Emotion CSS (which sets font-family on icon
+   spans) take precedence — fixing "keyboard_arrow_right" showing as
+   raw text instead of the Material Symbols icon.
+   We add !important only where browsers inject their own default fonts
+   (form controls, buttons, inputs). */
+* { font-family: 'Heebo', 'Arial Hebrew', Arial, sans-serif; box-sizing: border-box; }
+input, textarea, button, select,
+[data-baseweb="input"] input,
+[data-baseweb="textarea"] textarea,
+[data-baseweb="select"] {
+  font-family: 'Heebo', 'Arial Hebrew', Arial, sans-serif !important;
 }
 
 /* ══════════════════════════════════════════════
@@ -354,24 +346,6 @@ details summary {
   cursor: pointer !important;
   list-style: none !important;
   user-select: none !important;
-  display: flex !important;
-  align-items: center !important;
-  gap: 10px !important;
-  position: relative !important;
-  overflow: visible !important;
-}
-/* CSS arrow — replaces the hidden stIconMaterial text */
-[data-testid="stExpander"] summary::before {
-  content: "▶" !important;
-  font-size: 11px !important;
-  color: var(--txt-sub) !important;
-  transition: transform 0.2s ease !important;
-  display: inline-block !important;
-  flex-shrink: 0 !important;
-  order: -1 !important;
-}
-[data-testid="stExpander"] details[open] > summary::before {
-  transform: rotate(90deg) !important;
 }
 [data-testid="stExpander"] summary:hover { background: rgba(255,255,255,0.03) !important; }
 
@@ -564,58 +538,5 @@ hr { border-color: var(--border) !important; margin: 28px 0 !important; }
 """
 
 
-_ICON_FIX_JS = """
-<script>
-(function() {
-  function hideIcons(root) {
-    try {
-      (root || document).querySelectorAll('[data-testid="stIconMaterial"]').forEach(function(el) {
-        el.style.setProperty('font-size',   '0',              'important');
-        el.style.setProperty('line-height', '0',              'important');
-        el.style.setProperty('width',       '0',              'important');
-        el.style.setProperty('height',      '0',              'important');
-        el.style.setProperty('overflow',    'hidden',         'important');
-        el.style.setProperty('display',     'inline-block',   'important');
-        el.style.setProperty('opacity',     '0',              'important');
-        el.style.setProperty('color',       'transparent',    'important');
-      });
-    } catch(e) {}
-  }
-
-  function run() {
-    // Try to reach the parent Streamlit document from inside the component iframe
-    try { hideIcons(window.parent.document); } catch(e) {}
-    // Also run in the current document just in case
-    hideIcons(document);
-  }
-
-  run();
-  setTimeout(run, 300);
-  setTimeout(run, 1000);
-
-  // Watch for new elements added by Streamlit re-renders
-  try {
-    new MutationObserver(function() { run(); }).observe(
-      window.parent.document.body,
-      { childList: true, subtree: true }
-    );
-  } catch(e) {
-    try {
-      new MutationObserver(function() { run(); }).observe(
-        document.body,
-        { childList: true, subtree: true }
-      );
-    } catch(e2) {}
-  }
-})();
-</script>
-"""
-
-
 def apply_theme():
     st.markdown(f"<style>{_CSS}</style>", unsafe_allow_html=True)
-    # JS injection — CSS from st.markdown doesn't reach stIconMaterial spans
-    # (Streamlit renders them in an isolated context). We use a component
-    # iframe to run JS that sets inline styles directly with !important.
-    import streamlit.components.v1 as components
-    components.html(_ICON_FIX_JS, height=0)
