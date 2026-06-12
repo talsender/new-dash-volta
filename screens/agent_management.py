@@ -12,7 +12,7 @@ def render():
     ui.section_header("נציגים קיימים")
     for i, agent in enumerate(agents):
         with st.container():
-            c1, c2, c3, c4, c5, c6 = st.columns([2, 2, 2, 2, 1, 1])
+            c1, c2, c3, c4, c5, c6, c7 = st.columns([2, 1.5, 2, 1.5, 2, 1, 1])
             with c1:
                 agents[i]["name"] = st.text_input("שם עברי", agent["name"], key=f"n_{i}")
             with c2:
@@ -23,10 +23,14 @@ def render():
                     "שם ב-Voicenter", agent.get("voicenter_name", ""), key=f"vc_{i}",
                     help="השם כפי שמופיע בדוח Voicenter")
             with c4:
-                agents[i]["email"] = st.text_input("מייל", agent.get("email", ""), key=f"m_{i}")
+                agents[i]["feedback_name"] = st.text_input(
+                    "שם בקובץ משובים", agent.get("feedback_name", ""), key=f"fb_{i}",
+                    help="שם הלשונית בקובץ המשובים (בדיוק כפי שכתוב)")
             with c5:
-                agents[i]["active"] = st.checkbox("פעיל", agent.get("active", True), key=f"a_{i}")
+                agents[i]["email"] = st.text_input("מייל", agent.get("email", ""), key=f"m_{i}")
             with c6:
+                agents[i]["active"] = st.checkbox("פעיל", agent.get("active", True), key=f"a_{i}")
+            with c7:
                 st.markdown("<br>", unsafe_allow_html=True)
                 if st.button("🗑️", key=f"d_{i}"):
                     agents.pop(i)
@@ -41,18 +45,22 @@ def render():
 
     ui.section_header("הוספת נציג חדש")
     with st.form("add_agent"):
-        col1, col2 = st.columns(2)
+        col1, col2, col3 = st.columns(3)
         with col1:
             name    = st.text_input("שם עברי", placeholder="למשל: ישראל ישראלי")
             vc_name = st.text_input("שם ב-Voicenter", placeholder="למשל: israel israeli")
         with col2:
-            emp_id = st.number_input("מספר עובד", step=1, value=0)
-            email  = st.text_input("מייל", placeholder="agent@example.com")
+            emp_id   = st.number_input("מספר עובד", step=1, value=0)
+            fb_name  = st.text_input("שם בקובץ משובים", placeholder="שם הלשונית בדיוק",
+                                     help="כתוב בדיוק כפי שמופיע בשם הלשונית בקובץ המשובים")
+        with col3:
+            email = st.text_input("מייל", placeholder="agent@example.com")
         if st.form_submit_button("➕ הוסף נציג") and name:
             agents.append({
                 "id":             name.replace(" ", "_"),
                 "name":           name,
                 "voicenter_name": vc_name,
+                "feedback_name":  fb_name,
                 "employee_id":    int(emp_id),
                 "email":          email,
                 "active":         True,

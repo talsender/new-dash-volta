@@ -19,21 +19,34 @@ def _save_upload(uploaded, suffix):
     return f.name
 
 
-def _get_feedback(scores: dict, agent_name: str):
+def _get_feedback(scores: dict, agent_name: str, feedback_name: str = None):
+    """Return feedback score for an agent.
+
+    Uses feedback_name (exact sheet name from agents.json) when provided.
+    Falls back to fuzzy matching by agent_name if not set.
+    """
     if not scores:
         return None
+    # 1. exact match via configured feedback_name
+    if feedback_name:
+        fb = feedback_name.strip()
+        if fb in scores:
+            return scores[fb]
+        # case-insensitive exact
+        fb_l = fb.lower()
+        for key, val in scores.items():
+            if key.strip().lower() == fb_l:
+                return val
+    # 2. fuzzy fallback by agent full name
     name = agent_name.strip()
     if name in scores:
         return scores[name]
-    # case-insensitive, whitespace-stripped
     name_l  = name.lower()
     first_l = name.split()[0].lower()
     for key, val in scores.items():
         key_l = key.strip().lower()
-        # "אלינור" in "אלינור אדזיאשוילי"  or  "perry" in "perry yavdayev"
         if key_l in name_l or name_l in key_l:
             return val
-        # first word of agent matches sheet (handles "פרי" ↔ "פרי יבדייב")
         if first_l == key_l or key_l.startswith(first_l) or first_l.startswith(key_l):
             return val
     return None
@@ -108,7 +121,8 @@ def render():
             "occupancy_pct": occ_pct, "idle_calls": inp["idle_calls"],
             "idle_pct": calculate_idle_pct(inp["idle_calls"], answered),
             "phoenix": inp["phoenix"],
-            "feedback_score": _get_feedback(feedback_scores, agent["name"]),
+            "feedback_score": _get_feedback(feedback_scores, agent["name"],
+                                              feedback_name=agent.get("feedback_name")),
         })
 
     center_rate  = calculate_center_rate([{"hours": k["hours"], "meetings": k["meetings"]} for k in kpi_data])
