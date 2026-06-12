@@ -4,17 +4,22 @@ import pandas as pd
 def parse_attendance(filepath: str) -> pd.DataFrame:
     xl = pd.ExcelFile(filepath, engine='openpyxl')
     sheet = next((s for s in xl.sheet_names if 'וולטה' in s), xl.sheet_names[0])
-    df = xl.parse(sheet)
+    # read without headers to find the real header row
+    raw = xl.parse(sheet, header=None)
+    header_row = None
+    for i, row in raw.iterrows():
+        if any('מספר' in str(v) and 'עובד' in str(v) for v in row.values):
+            header_row = i
+            break
+    if header_row is None:
+        raise KeyError(f"לא נמצאה שורת כותרות עם 'מספר עובד'. שורה ראשונה: {list(raw.iloc[0])}")
+    df = xl.parse(sheet, header=header_row)
     df.columns = [str(c).strip() for c in df.columns]
-    # find employee-id column flexibly
     emp_col = next((c for c in df.columns if 'מספר' in c and 'עובד' in c), None)
-    if emp_col is None:
-        raise KeyError(f"לא נמצאה עמודת 'מספר עובד'. עמודות קיימות: {list(df.columns)}")
-    df['מספר עובד'] = pd.to_numeric(df[emp_col], errors='coerce').astype('Int64')
-    # find total-hours column flexibly
     hours_col = next((c for c in df.columns if 'סה"כ' in c or 'סהכ' in c or 'כללי' in c), None)
     if hours_col is None:
-        raise KeyError(f"לא נמצאה עמודת סה\"כ שעות. עמודות קיימות: {list(df.columns)}")
+        raise KeyError(f"לא נמצאה עמודת סה\"כ שעות. עמודות: {list(df.columns)}")
+    df['מספר עובד'] = pd.to_numeric(df[emp_col], errors='coerce').astype('Int64')
     df['סה"כ כללי'] = pd.to_numeric(df[hours_col], errors='coerce').fillna(0.0)
     return df
 
