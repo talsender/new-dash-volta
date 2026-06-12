@@ -5,6 +5,10 @@ from datetime import datetime
 _DEFAULT_PATH = os.path.join(os.path.dirname(__file__), '..', 'data', 'history.json')
 _REPO_FILE_PATH = "data/history.json"
 
+# Module-level in-memory cache: survives Streamlit re-runs within the same
+# server process.  Cleared only when the server restarts or redeploys.
+_mem: list | None = None
+
 
 def _github_cfg():
     try:
@@ -50,47 +54,62 @@ def _gh_write(token, repo, branch, history, sha):
 def _load_local(path: str) -> list:
     if not os.path.exists(path):
         return []
-    with open(path, encoding='utf-8') as f:
+    with open(path, encoding="utf-8") as f:
         content = f.read().strip()
     return json.loads(content) if content else []
 
 
 def load_history(path: str = _DEFAULT_PATH) -> list:
+    global _mem
+    # Serve from memory cache if available (avoids disk/network on every rerun)
+    if _mem is not None:
+        return list(_mem)
+
     cfg = _github_cfg()
     if cfg:
         try:
-            history, _ = _gh_read(*cfg)
-            return history
+            data, _ = _gh_read(*cfg)
+            _mem = data
+            return list(_mem)
         except Exception:
             pass
-    return _load_local(path)
+
+    data = _load_local(path)
+    _mem = data
+    return list(_mem)
 
 
-def save_month(snapshot: dict, path: str = _DEFAULT_PATH) -> None:
+def save_month(snapshot: dict, path: str = _DEFAULT_PATH) -> str:
+    """Persist snapshot and return storage source: 'github' | 'local'."""
+    global _mem
     snapshot = dict(snapshot)
     snapshot.setdefault("saved_at", datetime.now().isoformat())
 
+    # Merge into the current history list
+    base = list(_mem) if _mem is not None else _load_local(path)
+    base = [h for h in base if h.get("month") != snapshot["month"]]
+    base.append(snapshot)
+    base.sort(key=lambda h: h["month"])
+
+    # Update memory cache immediately so the history page sees it right away
+    _mem = base
+
+    # Try GitHub first
     cfg = _github_cfg()
     if cfg:
         try:
             token, repo, branch = cfg
-            history, sha = _gh_read(token, repo, branch)
-            history = [h for h in history if h.get("month") != snapshot["month"]]
-            history.append(snapshot)
-            history.sort(key=lambda h: h["month"])
-            if _gh_write(token, repo, branch, history, sha):
-                return
+            _, sha = _gh_read(token, repo, branch)
+            if _gh_write(token, repo, branch, base, sha):
+                return "github"
         except Exception:
             pass
 
-    # local fallback
+    # Local fallback
     os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
-    history = _load_local(path)
-    history = [h for h in history if h.get("month") != snapshot["month"]]
-    history.append(snapshot)
-    history.sort(key=lambda h: h["month"])
-    with open(path, 'w', encoding='utf-8') as f:
-        json.dump(history, f, ensure_ascii=False, indent=2)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(base, f, ensure_ascii=False, indent=2)
+    return "local"
 
 
 def get_month(month: str, path: str = _DEFAULT_PATH):

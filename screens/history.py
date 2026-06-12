@@ -24,6 +24,26 @@ _PLOT_LAYOUT = dict(
 def render():
     ui.page_header("היסטוריה וניתוח", icon="📈", subtitle="מגמות ביצועים לאורך זמן")
 
+    # GitHub persistence status
+    try:
+        token  = st.secrets.get("GITHUB_TOKEN", "")
+        repo   = st.secrets.get("GITHUB_REPO",  "")
+        github_ok = bool(token and repo)
+    except Exception:
+        github_ok = False
+
+    if not github_ok:
+        st.warning(
+            "ההיסטוריה נשמרת זמנית בלבד — כדי שתישמר לצמיתות הגדר GITHUB_TOKEN ו-GITHUB_REPO ב-Streamlit Secrets.",
+            icon="⚠️",
+        )
+
+    col_refresh, _ = st.columns([1, 4])
+    if col_refresh.button("🔄 רענן היסטוריה"):
+        import modules.history_manager as hm
+        hm._mem = None          # clear in-memory cache to force reload
+        st.rerun()
+
     history = load_history()
     if not history:
         st.info("אין נתונים היסטוריים עדיין. לאחר חישוב חודשי לחץ 'שמור חודש להיסטוריה'.")

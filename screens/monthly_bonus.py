@@ -199,8 +199,15 @@ def render():
                 "bonus_total": b["total"],
             } for k, b in zip(kpi_data, bonus_data)]
         }
-        save_month(snapshot)
-        st.success(f"חודש {month_label} נשמר להיסטוריה ✅")
+        try:
+            source = save_month(snapshot)
+            if source == "github":
+                st.success(f"✅ חודש {month_label} נשמר להיסטוריה (GitHub — קבוע)")
+            else:
+                st.success(f"✅ חודש {month_label} נשמר להיסטוריה (מקומי)")
+                st.warning("⚠️ כדי שההיסטוריה תישמר לאחר עדכון קוד — הגדר GITHUB_TOKEN ב-Streamlit Secrets", icon="⚠️")
+        except Exception as e:
+            st.error(f"שגיאה בשמירה: {e}")
 
     # ── Per-agent cards ──────────────────────────────────────────────────────
     st.markdown("---")
