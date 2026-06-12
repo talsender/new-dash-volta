@@ -564,5 +564,58 @@ hr { border-color: var(--border) !important; margin: 28px 0 !important; }
 """
 
 
+_ICON_FIX_JS = """
+<script>
+(function() {
+  function hideIcons(root) {
+    try {
+      (root || document).querySelectorAll('[data-testid="stIconMaterial"]').forEach(function(el) {
+        el.style.setProperty('font-size',   '0',              'important');
+        el.style.setProperty('line-height', '0',              'important');
+        el.style.setProperty('width',       '0',              'important');
+        el.style.setProperty('height',      '0',              'important');
+        el.style.setProperty('overflow',    'hidden',         'important');
+        el.style.setProperty('display',     'inline-block',   'important');
+        el.style.setProperty('opacity',     '0',              'important');
+        el.style.setProperty('color',       'transparent',    'important');
+      });
+    } catch(e) {}
+  }
+
+  function run() {
+    // Try to reach the parent Streamlit document from inside the component iframe
+    try { hideIcons(window.parent.document); } catch(e) {}
+    // Also run in the current document just in case
+    hideIcons(document);
+  }
+
+  run();
+  setTimeout(run, 300);
+  setTimeout(run, 1000);
+
+  // Watch for new elements added by Streamlit re-renders
+  try {
+    new MutationObserver(function() { run(); }).observe(
+      window.parent.document.body,
+      { childList: true, subtree: true }
+    );
+  } catch(e) {
+    try {
+      new MutationObserver(function() { run(); }).observe(
+        document.body,
+        { childList: true, subtree: true }
+      );
+    } catch(e2) {}
+  }
+})();
+</script>
+"""
+
+
 def apply_theme():
     st.markdown(f"<style>{_CSS}</style>", unsafe_allow_html=True)
+    # JS injection — CSS from st.markdown doesn't reach stIconMaterial spans
+    # (Streamlit renders them in an isolated context). We use a component
+    # iframe to run JS that sets inline styles directly with !important.
+    import streamlit.components.v1 as components
+    components.html(_ICON_FIX_JS, height=0)
