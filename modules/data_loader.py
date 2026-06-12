@@ -25,37 +25,49 @@ def parse_attendance(filepath: str) -> pd.DataFrame:
 
 
 def parse_voicenter(filepath: str) -> pd.DataFrame:
+    raw = None
     for enc in ('utf-16', 'utf-8', 'windows-1255'):
         try:
-            tables = pd.read_html(filepath, encoding=enc)
-            break
+            tables = pd.read_html(filepath, encoding=enc, header=None)
+            if tables:
+                raw = tables[0]
+                break
         except Exception:
             continue
-    else:
-        tables = pd.read_html(filepath)
-    # find the table that contains a 'משתמש'-like column
-    df = None
-    for t in tables:
-        t.columns = [str(c).strip() for c in t.columns]
-        if any('משתמש' in c for c in t.columns):
-            df = t
+    if raw is None:
+        raise KeyError("לא ניתן לקרוא את קובץ Voicenter")
+
+    raw = raw.astype(str).apply(lambda col: col.str.strip())
+    # find the row that contains 'משתמש'
+    header_row = None
+    for i, row in raw.iterrows():
+        if any('משתמש' in str(v) for v in row.values):
+            header_row = i
             break
-    if df is None:
-        all_cols = [list(t.columns) for t in tables]
-        raise KeyError(f"לא נמצאה עמודת 'משתמש'. עמודות בטבלאות: {all_cols}")
-    user_col = next(c for c in df.columns if 'משתמש' in c)
+    if header_row is None:
+        sample = raw.head(5).to_dict()
+        raise KeyError(f"לא נמצאה שורת כותרות עם 'משתמש'. דוגמה: {sample}")
+
+    raw.columns = raw.iloc[header_row].tolist()
+    df = raw.iloc[header_row + 1:].reset_index(drop=True)
+    df.columns = [str(c).strip() for c in df.columns]
+
+    user_col = next((c for c in df.columns if 'משתמש' in c), None)
+    if not user_col:
+        raise KeyError(f"עמודות לאחר הגדרת כותרת: {list(df.columns)}")
     df = df.rename(columns={user_col: 'משתמש'})
-    df = df[df['משתמש'].notna() & ~df['משתמש'].astype(str).str.startswith('סה"כ')]
+    df = df[df['משתמש'].notna() & ~df['משתמש'].astype(str).str.startswith('סה"כ') & (df['משתמש'] != 'nan')]
+
     occ_col = next((c for c in df.columns if 'תעסוקה' in c), None)
     if occ_col is None:
         raise KeyError(f"לא נמצאה עמודת תעסוקה. עמודות: {list(df.columns)}")
     df = df.rename(columns={occ_col: 'אחוז תעסוקה נטו'})
     occ = 'אחוז תעסוקה נטו'
-    if not pd.api.types.is_float_dtype(df[occ]) and not pd.api.types.is_integer_dtype(df[occ]):
-        df[occ] = (df[occ].astype(str)
-                          .str.replace('%', '', regex=False)
-                          .str.strip()
-                          .pipe(pd.to_numeric, errors='coerce') / 100)
+    df[occ] = (df[occ].astype(str)
+                      .str.replace('%', '', regex=False)
+                      .str.strip()
+                      .pipe(pd.to_numeric, errors='coerce') / 100)
+
     answered_col = next((c for c in df.columns if 'נענו' in c), None)
     if answered_col:
         df = df.rename(columns={answered_col: 'נענו'})
