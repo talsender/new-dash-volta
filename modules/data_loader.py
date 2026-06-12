@@ -2,24 +2,24 @@ import pandas as pd
 
 
 def parse_attendance(filepath: str) -> pd.DataFrame:
-    xl = pd.ExcelFile(filepath, engine='openpyxl')
-    sheet = next((s for s in xl.sheet_names if 'וולטה' in s), xl.sheet_names[0])
-    # read without headers to find the real header row
-    raw = xl.parse(sheet, header=None)
-    header_row = None
-    for i, row in raw.iterrows():
-        if any('מספר' in str(v) and 'עובד' in str(v) for v in row.values):
-            header_row = i
-            break
+    with pd.ExcelFile(filepath, engine='openpyxl') as xl:
+        sheet = next((s for s in xl.sheet_names if 'וולטה' in s), xl.sheet_names[0])
+        raw = xl.parse(sheet, header=None)
+    raw = raw.astype(str).apply(lambda col: col.str.strip())
+    header_row = next(
+        (i for i, row in raw.iterrows()
+         if any('מספר' in str(v) and 'עובד' in str(v) for v in row.values)),
+        None
+    )
     if header_row is None:
-        raise KeyError(f"לא נמצאה שורת כותרות עם 'מספר עובד'. שורה ראשונה: {list(raw.iloc[0])}")
-    df = xl.parse(sheet, header=header_row)
-    df.columns = [str(c).strip() for c in df.columns]
-    emp_col = next((c for c in df.columns if 'מספר' in c and 'עובד' in c), None)
+        raise KeyError(f"לא נמצאה שורת כותרות עם 'מספר עובד'. שורות: {raw.head(3).values.tolist()}")
+    raw.columns = [str(v).strip() for v in raw.iloc[header_row]]
+    df = raw.iloc[header_row + 1:].reset_index(drop=True)
+    df = df[pd.to_numeric(df['מספר עובד'], errors='coerce').notna()].copy()
+    df['מספר עובד'] = pd.to_numeric(df['מספר עובד'], errors='coerce').astype('Int64')
     hours_col = next((c for c in df.columns if 'סה"כ' in c or 'סהכ' in c or 'כללי' in c), None)
     if hours_col is None:
-        raise KeyError(f"לא נמצאה עמודת סה\"כ שעות. עמודות: {list(df.columns)}")
-    df['מספר עובד'] = pd.to_numeric(df[emp_col], errors='coerce').astype('Int64')
+        raise KeyError(f"לא נמצאה עמודת שעות. עמודות: {list(df.columns)}")
     df['סה"כ כללי'] = pd.to_numeric(df[hours_col], errors='coerce').fillna(0.0)
     return df
 
@@ -38,23 +38,24 @@ def parse_voicenter(filepath: str) -> pd.DataFrame:
         raise KeyError("לא ניתן לקרוא את קובץ Voicenter")
 
     raw = raw.astype(str).apply(lambda col: col.str.strip())
-    # find the row that contains 'משתמש'
-    header_row = None
-    for i, row in raw.iterrows():
-        if any('משתמש' in str(v) for v in row.values):
-            header_row = i
-            break
-    if header_row is None:
-        sample = raw.head(5).to_dict()
-        raise KeyError(f"לא נמצאה שורת כותרות עם 'משתמש'. דוגמה: {sample}")
+    col_names = [str(c).strip() for c in raw.columns]
 
-    raw.columns = raw.iloc[header_row].tolist()
-    df = raw.iloc[header_row + 1:].reset_index(drop=True)
-    df.columns = [str(c).strip() for c in df.columns]
+    # case 1: pandas already detected headers (e.g. <th> tags)
+    if any('משתמש' in c for c in col_names):
+        raw.columns = col_names
+        df = raw
+    else:
+        # case 2: all columns are numeric — find header row in values
+        header_row = next(
+            (i for i, row in raw.iterrows() if any('משתמש' in str(v) for v in row.values)),
+            None
+        )
+        if header_row is None:
+            raise KeyError(f"לא נמצאה שורת כותרות עם 'משתמש'. עמודות: {col_names}")
+        raw.columns = [str(v).strip() for v in raw.iloc[header_row]]
+        df = raw.iloc[header_row + 1:].reset_index(drop=True)
 
     user_col = next((c for c in df.columns if 'משתמש' in c), None)
-    if not user_col:
-        raise KeyError(f"עמודות לאחר הגדרת כותרת: {list(df.columns)}")
     df = df.rename(columns={user_col: 'משתמש'})
     df = df[df['משתמש'].notna() & ~df['משתמש'].astype(str).str.startswith('סה"כ') & (df['משתמש'] != 'nan')]
 
@@ -62,13 +63,11 @@ def parse_voicenter(filepath: str) -> pd.DataFrame:
     if occ_col is None:
         raise KeyError(f"לא נמצאה עמודת תעסוקה. עמודות: {list(df.columns)}")
     df = df.rename(columns={occ_col: 'אחוז תעסוקה נטו'})
-    occ = 'אחוז תעסוקה נטו'
-    df[occ] = (df[occ].astype(str)
-                      .str.replace('%', '', regex=False)
-                      .str.strip()
-                      .pipe(pd.to_numeric, errors='coerce') / 100)
+    df['אחוז תעסוקה נטו'] = (df['אחוז תעסוקה נטו'].astype(str)
+                              .str.replace('%', '', regex=False).str.strip()
+                              .pipe(pd.to_numeric, errors='coerce') / 100)
 
-    answered_col = next((c for c in df.columns if 'נענו' in c), None)
+    answered_col = next((c for c in df.columns if c == 'נענו' or ('נענו' in c and 'לא' not in c)), None)
     if answered_col:
         df = df.rename(columns={answered_col: 'נענו'})
     df['נענו'] = pd.to_numeric(df.get('נענו', 0), errors='coerce').fillna(0).astype(int)
