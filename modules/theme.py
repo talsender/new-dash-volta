@@ -38,28 +38,18 @@ _CSS = """
    being displaced onto content areas.
 ══════════════════════════════════════════════ */
 body { direction: rtl !important; }
-* { font-family: 'Heebo', 'Arial Hebrew', Arial, sans-serif !important; box-sizing: border-box; }
 
-/* Restore Material Symbols font for Streamlit 1.35+ icon spans.
-   The * selector above overrides the icon font and displays raw icon
-   names (e.g. "keyboard_arrow_down") as visible text instead of symbols.
-   We import Material Symbols Rounded explicitly and reapply all required
-   font properties with higher specificity. */
+/* Apply Heebo to everything EXCEPT Streamlit icon-font spans.
+   Using :not() ensures the icon spans are never touched by this rule,
+   so Streamlit's own CSS (which loads Material Symbols Rounded) can
+   apply the correct icon font without any override battle. */
+*:not([data-testid="stIconMaterial"]) {
+  font-family: 'Heebo', 'Arial Hebrew', Arial, sans-serif !important;
+  box-sizing: border-box;
+}
 [data-testid="stIconMaterial"] {
-  font-family: 'Material Symbols Rounded', 'Material Icons', sans-serif !important;
-  font-weight: normal !important;
-  font-style: normal !important;
-  font-size: 24px !important;
-  line-height: 1 !important;
-  letter-spacing: normal !important;
-  text-transform: none !important;
-  white-space: nowrap !important;
+  box-sizing: border-box;
   direction: ltr !important;
-  display: inline-block !important;
-  -webkit-font-smoothing: antialiased !important;
-  text-rendering: optimizeLegibility !important;
-  font-feature-settings: 'liga' !important;
-  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24 !important;
 }
 
 /* ══════════════════════════════════════════════
