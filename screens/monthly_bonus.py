@@ -12,6 +12,11 @@ from modules import ui
 _SS_KEY = "mb_results"
 _SAVE_LABELS = {"github": "GitHub — קבוע", "local": "מקומי", "session": "זיכרון"}
 
+# Must match app.py constants
+_APP_PAGE_KEY = "_current_page"
+_APP_NAV_KEY  = "_nav_radio"
+_HISTORY_PAGE = "📈 היסטוריה"
+
 
 def _do_save_and_navigate(res, month_label):
     """Save results to history and navigate."""
@@ -22,7 +27,13 @@ def _do_save_and_navigate(res, month_label):
         return
     save_src = save_month(snapshot)
     st.toast(f"✅ חודש {month_label} נשמר ({_SAVE_LABELS.get(save_src, 'נשמר')})")
-    st.session_state["nav_goto"] = "📈 היסטוריה"
+    # Set navigation target via multiple mechanisms for Cloud reliability
+    st.session_state["nav_goto"]   = _HISTORY_PAGE
+    st.session_state[_APP_PAGE_KEY] = _HISTORY_PAGE  # direct fallback
+    try:
+        st.session_state[_APP_NAV_KEY] = _HISTORY_PAGE  # radio sync (best-effort)
+    except Exception:
+        pass
     st.rerun()
 
 

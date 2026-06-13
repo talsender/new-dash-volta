@@ -78,7 +78,10 @@ if _PAGE_KEY not in st.session_state:
 nav_to = st.session_state.pop("nav_goto", None)
 if nav_to and nav_to in PAGES:
     st.session_state[_PAGE_KEY] = nav_to
-    st.session_state[_NAV_KEY]  = nav_to  # best-effort radio sync
+    try:
+        st.session_state[_NAV_KEY] = nav_to  # best-effort radio sync
+    except Exception:
+        pass
 
 current_page = st.session_state[_PAGE_KEY]
 
