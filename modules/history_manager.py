@@ -1,9 +1,14 @@
 # modules/history_manager.py
-import json, os, base64
+import json, os, base64, tempfile
 from datetime import datetime
 
 _DEFAULT_PATH = os.path.join(os.path.dirname(__file__), '..', 'data', 'history.json')
 _REPO_FILE_PATH = "data/history.json"
+
+# On Streamlit Cloud the repo directory is read-only; we fall back to this
+# writable temp path.  All sessions on the same app instance share /tmp/,
+# so data persists across page refreshes (but is lost on full redeploy).
+_TMP_PATH = os.path.join(tempfile.gettempdir(), "kpi_history.json")
 
 # Session-state cache key — used instead of module-level _mem so the cache is
 # guaranteed to be shared between save_month() and load_history() within the
@@ -76,6 +81,30 @@ def _load_local(path: str) -> list:
     return json.loads(content) if content else []
 
 
+def _write_tmp(data: list) -> None:
+    """Write data to the shared temp-dir fallback path. Never raises."""
+    try:
+        with open(_TMP_PATH, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+
+
+def _merge_with_tmp(repo_data: list) -> list:
+    """Merge repo file data with temp-dir data (tmp wins per month key)."""
+    try:
+        if not os.path.exists(_TMP_PATH):
+            return repo_data
+        tmp_data = _load_local(_TMP_PATH)
+        if not tmp_data:
+            return repo_data
+        merged = {h["month"]: h for h in repo_data}
+        merged.update({h["month"]: h for h in tmp_data})
+        return sorted(merged.values(), key=lambda h: h.get("month", ""))
+    except Exception:
+        return repo_data
+
+
 def _use_cache(path: str) -> bool:
     """Only cache when using the production default path — not in tests."""
     return os.path.abspath(path) == os.path.abspath(_DEFAULT_PATH)
@@ -97,7 +126,8 @@ def load_history(path: str = _DEFAULT_PATH) -> list:
             except Exception:
                 pass
 
-        data = _load_local(path)
+        # Merge repo file with temp-dir data (temp-dir survives page refreshes on Cloud)
+        data = _merge_with_tmp(_load_local(path))
         _cache_set(data)
         return list(data)
 
@@ -122,7 +152,7 @@ def save_month(snapshot: dict, path: str = _DEFAULT_PATH) -> str:
                 base = list(cached)
             else:
                 try:
-                    base = _load_local(path)
+                    base = _merge_with_tmp(_load_local(path))
                 except Exception:
                     base = []
         else:
@@ -156,7 +186,11 @@ def save_month(snapshot: dict, path: str = _DEFAULT_PATH) -> str:
                 json.dump(base, f, ensure_ascii=False, indent=2)
             return "local"
         except Exception:
-            return "session"
+            pass
+
+        # Fallback: write to shared temp dir (survives page refreshes on Cloud)
+        _write_tmp(base)
+        return "session"
 
     except Exception:
         # Last-resort: try to at least update the cache so history isn't empty
@@ -173,7 +207,7 @@ def delete_month(month_key: str, path: str = _DEFAULT_PATH) -> str:
         use_cache = _use_cache(path)
         if use_cache:
             cached = _cache_get()
-            base = list(cached) if cached is not None else _load_local(path)
+            base = list(cached) if cached is not None else _merge_with_tmp(_load_local(path))
         else:
             base = _load_local(path)
 
@@ -197,7 +231,11 @@ def delete_month(month_key: str, path: str = _DEFAULT_PATH) -> str:
                 json.dump(base, f, ensure_ascii=False, indent=2)
             return "local"
         except Exception:
-            return "session"
+            pass
+
+        # Fallback: keep temp dir in sync so refresh doesn't resurrect deleted entries
+        _write_tmp(base)
+        return "session"
     except Exception:
         return "session"
 
