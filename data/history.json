@@ -1,1 +1,30 @@
-[]
+[
+  {
+    "month": "2026-06",
+    "label": "יוני 2026",
+    "center_rate": 1.12,
+    "center_met_target": true,
+    "manager_bonus": 2500,
+    "total_billing": 50000,
+    "total_meetings": 295,
+    "total_hours": 230.5,
+    "total_phoenix": 12,
+    "avg_occupancy_pct": 0.42,
+    "avg_idle_pct": 0.008,
+    "total_agent_bonus": 3200,
+    "agents": [
+      {
+        "name": "טום",
+        "hours": 115.0,
+        "meetings": 148,
+        "meetings_per_hour": 1.287,
+        "occupancy_pct": 0.42,
+        "idle_pct": 0.008,
+        "feedback_score": 8.5,
+        "phoenix": 6,
+        "bonus_total": 1600
+      }
+    ],
+    "saved_at": "2026-06-13T13:51:28.862152"
+  }
+]

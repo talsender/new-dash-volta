@@ -113,7 +113,8 @@ def test_build_snapshot_required_fields():
     ]:
         assert field in snap, f"build_snapshot missing field: {field}"
 
-    assert snap["month"] == "יוני 2026"
+    assert snap["month"] == "2026-06"   # derived from label via _label_to_month_key
+    assert snap["label"] == "יוני 2026"
     assert snap["total_meetings"] == 148
     assert snap["total_phoenix"] == 6
     assert snap["avg_occupancy_pct"] == pytest.approx(0.42)

@@ -6,6 +6,22 @@ from modules.calculator import (calculate_work_hours, calculate_meetings_per_hou
                                  calculate_idle_pct, calculate_center_rate,
                                  calculate_agent_bonus, calculate_manager_bonus)
 
+_HEB_MONTHS = {
+    "ינואר": "01", "פברואר": "02", "מרץ": "03", "אפריל": "04",
+    "מאי": "05", "יוני": "06", "יולי": "07", "אוגוסט": "08",
+    "ספטמבר": "09", "אוקטובר": "10", "נובמבר": "11", "דצמבר": "12",
+}
+
+
+def _label_to_month_key(label: str) -> str:
+    """'יוני 2026' → '2026-06'. Falls back to the label itself."""
+    parts = label.strip().split()
+    if len(parts) == 2:
+        month_num = _HEB_MONTHS.get(parts[0])
+        if month_num and parts[1].isdigit() and len(parts[1]) == 4:
+            return f"{parts[1]}-{month_num}"
+    return label.strip()
+
 
 def _save_upload(uploaded, suffix):
     f = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
@@ -38,7 +54,7 @@ def _get_feedback(scores: dict, agent_name: str, feedback_name: str = None):
     return None
 
 
-def compute_month(att_file, vc_file, fb_file, manual, agents, settings, month_label):
+def compute_month(att_file, vc_file, fb_file, manual, agents, settings, month_label, month_key=None):
     """Parse uploaded files and compute all KPI/bonus data.
 
     Raises on parse failure — caller should catch and display the error.
@@ -111,7 +127,8 @@ def compute_month(att_file, vc_file, fb_file, manual, agents, settings, month_la
         "center_meets":  center_meets,
         "manager_bonus": manager_bonus,
         "billing":       billing,
-        "month_label":   month_label,
+        "month_label": month_label,
+        "month_key":   (month_key or month_label).strip(),
     }
 
 
@@ -122,7 +139,7 @@ def build_snapshot(res, month_label):
     billing    = res["billing"]
     n = len(kpi_data) or 1
     return {
-        "month":             month_label.strip(),
+        "month":             res.get("month_key") or _label_to_month_key(month_label),
         "label":             month_label,
         # Center-level metrics
         "center_rate":       res["center_rate"],

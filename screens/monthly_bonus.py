@@ -1,6 +1,7 @@
 # screens/monthly_bonus.py
 import streamlit as st
 import tempfile, os
+from datetime import datetime
 from modules.month_calc import compute_month, build_snapshot
 from modules.config_manager import load_agents, load_settings
 from modules.email_builder import (build_monthly_client_email, build_monthly_agent_email)
@@ -9,21 +10,56 @@ from modules.excel_exporter import export_monthly_bonus, export_agent_bonus
 from modules.history_manager import save_month
 from modules import ui
 
-_SS_KEY = "mb_results"
+_SS_KEY    = "mb_results"
+_LOG_KEY   = "mb_debug_log"
 _SAVE_LABELS = {"github": "GitHub — קבוע", "local": "מקומי", "session": "זיכרון"}
 
 
+def _log(msg: str):
+    """Append timestamped entry to persistent debug log (survives st.rerun)."""
+    ts = datetime.now().strftime("%H:%M:%S.%f")[:-3]
+    if _LOG_KEY not in st.session_state:
+        st.session_state[_LOG_KEY] = []
+    st.session_state[_LOG_KEY].append(f"[{ts}] {msg}")
+
+
 def _do_save_and_navigate(res, month_label):
-    """Save results to history and navigate. save_month never raises."""
-    snapshot = build_snapshot(res, month_label)
-    save_src = save_month(snapshot)
-    st.toast(f"✅ חודש {month_label} נשמר ({_SAVE_LABELS.get(save_src, 'נשמר')})")
+    """Save results to history and navigate."""
+    _log("▶ _do_save_and_navigate נקרא")
+    try:
+        snapshot = build_snapshot(res, month_label)
+        _log(f"✔ build_snapshot — month={snapshot.get('month')}, agents={len(snapshot.get('agents', []))}")
+    except Exception as exc:
+        _log(f"✘ build_snapshot נכשל: {exc}")
+        st.error(f"❌ שגיאה ב-build_snapshot: {exc}")
+        st.exception(exc)
+        return
+    try:
+        save_src = save_month(snapshot)
+        _log(f"✔ save_month — src={save_src!r}")
+    except Exception as exc:
+        _log(f"✘ save_month נכשל: {exc}")
+        st.error(f"❌ שגיאה ב-save_month: {exc}")
+        st.exception(exc)
+        return
+    _log("✔ nav_goto='📈 היסטוריה' — קורא st.rerun()")
+    st.success(f"✅ חודש {month_label} נשמר ({_SAVE_LABELS.get(save_src, 'נשמר')})")
     st.session_state["nav_goto"] = "📈 היסטוריה"
     st.rerun()
 
 
 def render():
     ui.page_header("בונוסים חודשיים", icon="💰", subtitle="חישוב בונוסים, Excel ושליחת מיילים")
+
+    # ── Debug log panel (always visible, survives reruns) ─────────────────────
+    log = st.session_state.get(_LOG_KEY, [])
+    if log:
+        with st.expander("🔍 לוג דיבאג", expanded=True):
+            st.code("\n".join(reversed(log)), language=None)
+            if st.button("נקה לוג", key="clear_log"):
+                st.session_state[_LOG_KEY] = []
+                st.rerun()
+        st.divider()
 
     agents   = [a for a in load_agents() if a["active"]]
     settings = load_settings()
@@ -54,15 +90,19 @@ def render():
             }
 
     # ── Compute / Save buttons ───────────────────────────────────────────────
+    _log(f"render — att={bool(att_file)}, vc={bool(vc_file)}, results_in_ss={_SS_KEY in st.session_state}")
     if att_file and vc_file:
         col_calc, col_save = st.columns(2)
         calc_clicked        = col_calc.button("חשב בונוסים")
         save_direct_clicked = col_save.button("💾 חשב ושמור להיסטוריה", type="primary")
+        _log(f"כפתורים עליונים — calc={calc_clicked}, save_direct={save_direct_clicked}")
 
         if calc_clicked or save_direct_clicked:
             try:
                 res = compute_month(att_file, vc_file, fb_file, manual, agents, settings, month_label)
+                _log(f"compute_month OK — {len(res.get('kpi_data', []))} נציגים")
             except Exception as e:
+                _log(f"compute_month נכשל: {e}")
                 st.error(f"שגיאה בקריאת קבצים: {e}")
                 return
 
@@ -104,7 +144,9 @@ def render():
         use_container_width=True,
     )
 
-    if st.button("שמור חודש להיסטוריה"):
+    save_hist_clicked = st.button("שמור חודש להיסטוריה")
+    _log(f"כפתור שמירה תחתון — clicked={save_hist_clicked}")
+    if save_hist_clicked:
         _do_save_and_navigate(res, month_label)
 
     # ── Per-agent cards ──────────────────────────────────────────────────────
