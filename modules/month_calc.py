@@ -86,8 +86,9 @@ def compute_month(att_file, vc_file, fb_file, manual, agents, settings, month_la
         if not len(vc_row):
             first_name = agent['name'].split()[0]
             vc_row = vc_df[vc_df['משתמש'].str.contains(first_name, na=False, regex=False)]
-        answered = int(vc_row['נענו'].iloc[0])              if len(vc_row) else 0
-        occ_pct  = float(vc_row['אחוז תעסוקה נטו'].iloc[0]) if len(vc_row) else 0.0
+        answered    = int(vc_row['נענו'].iloc[0])              if len(vc_row) else 0
+        total_calls = int(vc_row['כניסות'].iloc[0])           if len(vc_row) else 0
+        occ_pct     = float(vc_row['אחוז תעסוקה נטו'].iloc[0]) if len(vc_row) else 0.0
         kpi_data.append({
             "agent_id": agent["id"], "name": agent["name"],
             "employee_id": agent["employee_id"], "email": agent.get("email", ""),
@@ -95,6 +96,7 @@ def compute_month(att_file, vc_file, fb_file, manual, agents, settings, month_la
             "meetings_per_hour": calculate_meetings_per_hour(inp["meetings"], hours),
             "occupancy_pct": occ_pct, "idle_calls": inp["idle_calls"],
             "answered_calls": answered,
+            "total_calls":    total_calls,
             "idle_pct": calculate_idle_pct(inp["idle_calls"], answered),
             "phoenix": inp["phoenix"],
             "feedback_score": _get_feedback(feedback_scores, agent["name"],
@@ -152,6 +154,7 @@ def build_snapshot(res, month_label):
         "total_phoenix":        billing["phoenix_count"],
         "total_idle_calls":     sum(k.get("idle_calls", 0) for k in kpi_data),
         "total_answered_calls": sum(k.get("answered_calls", 0) for k in kpi_data),
+        "total_calls":          sum(k.get("total_calls", k.get("answered_calls", 0)) for k in kpi_data),
         "avg_occupancy_pct":    sum(k["occupancy_pct"] for k in kpi_data) / n,
         "avg_idle_pct":         sum(k["idle_pct"] for k in kpi_data) / n,
         "total_agent_bonus":    sum(b["total"] for b in bonus_data),

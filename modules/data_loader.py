@@ -101,6 +101,21 @@ def parse_voicenter(filepath: str) -> pd.DataFrame:
     if answered_col:
         df = df.rename(columns={answered_col: 'נענו'})
     df['נענו'] = pd.to_numeric(df.get('נענו', 0), errors='coerce').fillna(0).astype(int)
+
+    # Total incoming calls (כניסות) — distinct from answered (נענו)
+    _total_candidates = ['כניסות', 'שיחות נכנסות', 'שיחות']
+    total_col = next(
+        (c for c in df.columns
+         if str(c).strip() in _total_candidates
+         or any(t in str(c) for t in _total_candidates)),
+        None,
+    )
+    if total_col and total_col != answered_col:
+        df = df.rename(columns={total_col: 'כניסות'})
+        df['כניסות'] = pd.to_numeric(df['כניסות'], errors='coerce').fillna(0).astype(int)
+    else:
+        df['כניסות'] = df['נענו']  # fallback: same as answered
+
     return df.reset_index(drop=True)
 
 
