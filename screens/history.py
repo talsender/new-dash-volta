@@ -19,14 +19,44 @@ _PLOT_LAYOUT = dict(
     plot_bgcolor="rgba(4,8,15,0.6)",
     font=dict(color="#7A9CBE", family="Heebo"),
     xaxis=dict(gridcolor="rgba(255,255,255,0.06)", color="#7A9CBE"),
-    yaxis=dict(gridcolor="rgba(255,255,255,0.06)", color="#7A9CBE"),
+    yaxis=dict(gridcolor="rgba(255,255,255,0.06)", color="#7A9CBE", side="right"),
     title_font=dict(color="#EDF2F7", size=14),
-    margin=dict(l=20, r=20, t=40, b=20),
+    margin=dict(l=20, r=60, t=40, b=20),
 )
 
 
+def _rtl_table(rows: list) -> str:
+    """Render a dark-themed RTL HTML table (direction: rtl, first column on right)."""
+    if not rows:
+        return ""
+    cols = list(rows[0].keys())
+    th = "".join(
+        f'<th style="padding:10px 14px;background:rgba(27,95,170,0.25);'
+        f'color:#F5A800;font-weight:600;white-space:nowrap;'
+        f'border-bottom:2px solid rgba(245,168,0,0.25);">{c}</th>'
+        for c in cols
+    )
+    body = ""
+    for i, row in enumerate(rows):
+        bg = "rgba(255,255,255,0.03)" if i % 2 else "transparent"
+        tds = "".join(
+            f'<td style="padding:8px 14px;color:#EDF2F7;background:{bg};'
+            f'border-bottom:1px solid rgba(255,255,255,0.06);white-space:nowrap;">'
+            f'{row[c]}</td>'
+            for c in cols
+        )
+        body += f"<tr>{tds}</tr>"
+    return (
+        '<div style="overflow-x:auto;direction:rtl;margin-bottom:8px;">'
+        '<table style="width:100%;border-collapse:collapse;direction:rtl;'
+        'text-align:right;font-family:Heebo,sans-serif;font-size:14px;">'
+        f"<thead><tr>{th}</tr></thead>"
+        f"<tbody>{body}</tbody>"
+        "</table></div>"
+    )
+
+
 def _add_month_from_excel():
-    """Expander section: upload Excel files for a past month and save to history."""
     with st.expander("➕ הוסף חודש מקובצי Excel"):
         agents   = [a for a in load_agents() if a["active"]]
         settings = load_settings()
@@ -109,32 +139,55 @@ def render():
 
     labels = [h["label"] for h in history]
 
+    # ── RTL summary table ────────────────────────────────────────────────────
     ui.section_header("סיכום חודשים — ביצועי מוקד")
-    st.dataframe(
-        [{
-            "חודש":             h["label"],
-            "שעות":             f"{h.get('total_hours', 0):.1f}",
-            "תיאומים":          h.get("total_meetings", "—"),
-            "תיאומים/שעה":      f"{h.get('center_rate', 0):.2f}",
-            "שיחות סרק":        h.get("total_idle_calls", "—"),
-            "סה\"כ שיחות":      h.get("total_calls", h.get("total_answered_calls", "—")),
-            "פניקס":            h.get("total_phoenix", "—"),
-        } for h in history],
-        use_container_width=True,
-    )
+    table_rows = [{
+        "חודש":          h["label"],
+        "שעות":          f"{h.get('total_hours', 0):.1f}",
+        "תיאומים":       h.get("total_meetings", "—"),
+        "תיאומים/שעה":   f"{h.get('center_rate', 0):.2f}",
+        "שיחות סרק":     h.get("total_idle_calls", "—"),
+        'סה"כ שיחות':    h.get("total_calls", h.get("total_answered_calls", "—")),
+        "פניקס":         h.get("total_phoenix", "—"),
+    } for h in history]
+    st.markdown(_rtl_table(table_rows), unsafe_allow_html=True)
 
     # ── History management (delete) ──────────────────────────────────────────
     st.markdown("<br>", unsafe_allow_html=True)
     ui.section_header("ניהול היסטוריה")
     for h in history:
-        col_lbl, col_del = st.columns([5, 1])
-        col_lbl.write(f"**{h['label']}** — {h.get('total_meetings', '—')} תיאומים, {h.get('total_hours', 0):.1f} שעות")
+        col_del, col_lbl = st.columns([1, 5])
+        col_lbl.markdown(
+            f'<div style="text-align:right;padding-top:6px;">'
+            f'<b>{h["label"]}</b> — {h.get("total_meetings", "—")} תיאומים, '
+            f'{h.get("total_hours", 0):.1f} שעות</div>',
+            unsafe_allow_html=True,
+        )
         if col_del.button("🗑️ מחק", key=f"del_{h['month']}"):
             delete_month(h["month"])
             st.toast(f"🗑️ {h['label']} נמחק")
             st.rerun()
 
     if HAS_PLOTLY:
+        # ── Total calls chart ────────────────────────────────────────────────
+        call_data = [
+            (h["label"], v)
+            for h in history
+            for v in [h.get("total_calls", h.get("total_answered_calls"))]
+            if isinstance(v, (int, float))
+        ]
+        if call_data:
+            ui.section_header('סה"כ שיחות לפי חודש')
+            clabels, cvals = zip(*call_data)
+            fig_calls = px.bar(
+                x=list(clabels), y=list(cvals),
+                labels={"x": "חודש", "y": 'סה"כ שיחות'},
+                color_discrete_sequence=["#3DD68C"],
+            )
+            fig_calls.update_layout(**_PLOT_LAYOUT)
+            st.plotly_chart(fig_calls, use_container_width=True)
+
+        # ── Center rate over time ────────────────────────────────────────────
         ui.section_header("קצב מוקד לאורך זמן")
         fig = px.line(x=labels, y=[h["center_rate"] for h in history],
                       labels={"x": "חודש", "y": "פגישות/שעה"},
@@ -143,6 +196,7 @@ def render():
         fig.update_layout(**_PLOT_LAYOUT)
         st.plotly_chart(fig, use_container_width=True)
 
+        # ── Phoenix ──────────────────────────────────────────────────────────
         ui.section_header("פניקס לפי חודש")
         fig2 = px.bar(x=labels,
                       y=[sum(a["phoenix"] for a in h["agents"]) for h in history],
