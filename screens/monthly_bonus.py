@@ -18,36 +18,22 @@ _APP_NAV_KEY  = "_nav_radio"
 _HISTORY_PAGE = "📈 היסטוריה"
 
 
-def _dbg(msg: str):
-    """Append a debug message to the persistent log (survives st.rerun)."""
-    log = st.session_state.get("_nav_debug", [])
-    log.append(msg)
-    st.session_state["_nav_debug"] = log
-
-
 def _do_save_and_navigate(res, month_label):
     """Save results to history and navigate."""
-    _dbg("1. _do_save_and_navigate called")
     try:
         snapshot = build_snapshot(res, month_label)
-        _dbg(f"2. build_snapshot OK — month={snapshot.get('month')}")
     except Exception as exc:
         st.error(f"❌ שגיאה ביצירת snapshot: {exc}")
-        _dbg(f"2. build_snapshot FAILED: {exc}")
         return
     save_src = save_month(snapshot)
-    _dbg(f"3. save_month returned: {save_src!r}")
     st.toast(f"✅ חודש {month_label} נשמר ({_SAVE_LABELS.get(save_src, 'נשמר')})")
     # Set navigation target via multiple mechanisms for Cloud reliability
     st.session_state["nav_goto"]    = _HISTORY_PAGE
     st.session_state[_APP_PAGE_KEY] = _HISTORY_PAGE  # direct fallback
     try:
         st.session_state[_APP_NAV_KEY] = _HISTORY_PAGE  # radio sync (best-effort)
-        _dbg(f"4. _nav_radio set OK")
-    except Exception as e:
-        _dbg(f"4. _nav_radio set FAILED: {e}")
-    _dbg(f"5. session keys — nav_goto={st.session_state.get('nav_goto')!r}  _current_page={st.session_state.get('_current_page')!r}")
-    _dbg("6. calling st.rerun()")
+    except Exception:
+        pass
     st.rerun()
 
 

@@ -167,5 +167,40 @@ def save_month(snapshot: dict, path: str = _DEFAULT_PATH) -> str:
         return "session"
 
 
+def delete_month(month_key: str, path: str = _DEFAULT_PATH) -> str:
+    """Remove a month entry from history. Never raises. Returns storage source."""
+    try:
+        use_cache = _use_cache(path)
+        if use_cache:
+            cached = _cache_get()
+            base = list(cached) if cached is not None else _load_local(path)
+        else:
+            base = _load_local(path)
+
+        base = [h for h in base if h.get("month") != month_key]
+
+        if use_cache:
+            _cache_set(base)
+            cfg = _github_cfg()
+            if cfg:
+                try:
+                    token, repo, branch = cfg
+                    _, sha = _gh_read(token, repo, branch)
+                    if _gh_write(token, repo, branch, base, sha):
+                        return "github"
+                except Exception:
+                    pass
+
+        try:
+            os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(base, f, ensure_ascii=False, indent=2)
+            return "local"
+        except Exception:
+            return "session"
+    except Exception:
+        return "session"
+
+
 def get_month(month: str, path: str = _DEFAULT_PATH):
     return next((h for h in load_history(path) if h["month"] == month), None)

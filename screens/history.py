@@ -1,7 +1,7 @@
 # screens/history.py
 import streamlit as st
 import json
-from modules.history_manager import load_history, save_month
+from modules.history_manager import load_history, save_month, delete_month
 from modules.month_calc import compute_month, build_snapshot
 from modules.config_manager import load_agents, load_settings
 from modules import ui
@@ -112,20 +112,27 @@ def render():
     ui.section_header("סיכום חודשים — ביצועי מוקד")
     st.dataframe(
         [{
-            "חודש":            h["label"],
-            "קצב מוקד":        f"{h['center_rate']:.2f}",
-            "עמד ביעד":        "✅" if h["center_met_target"] else "❌",
-            "תיאומים כולל":   h.get("total_meetings", "—"),
-            "שעות כולל":       f"{h.get('total_hours', 0):.1f}",
-            "פניקס כולל":      h.get("total_phoenix", "—"),
-            "תעסוקה ממוצעת":  f"{h.get('avg_occupancy_pct', 0)*100:.1f}%",
-            "סרק ממוצע":       f"{h.get('avg_idle_pct', 0)*100:.2f}%",
-            "בונוס מנהל ₪":    f"{h['manager_bonus']:,}",
-            "בונוס נציגים ₪":  f"{h.get('total_agent_bonus', 0):,}",
-            "חיוב ללקוח ₪":   f"{h['total_billing']:,}",
+            "חודש":             h["label"],
+            "שעות":             f"{h.get('total_hours', 0):.1f}",
+            "תיאומים":          h.get("total_meetings", "—"),
+            "תיאומים/שעה":      f"{h.get('center_rate', 0):.2f}",
+            "שיחות סרק":        h.get("total_idle_calls", "—"),
+            "סה\"כ שיחות":      h.get("total_answered_calls", "—"),
+            "פניקס":            h.get("total_phoenix", "—"),
         } for h in history],
         use_container_width=True,
     )
+
+    # ── History management (delete) ──────────────────────────────────────────
+    st.markdown("<br>", unsafe_allow_html=True)
+    ui.section_header("ניהול היסטוריה")
+    for h in history:
+        col_lbl, col_del = st.columns([5, 1])
+        col_lbl.write(f"**{h['label']}** — {h.get('total_meetings', '—')} תיאומים, {h.get('total_hours', 0):.1f} שעות")
+        if col_del.button("🗑️ מחק", key=f"del_{h['month']}"):
+            delete_month(h["month"])
+            st.toast(f"🗑️ {h['label']} נמחק")
+            st.rerun()
 
     if HAS_PLOTLY:
         ui.section_header("קצב מוקד לאורך זמן")
