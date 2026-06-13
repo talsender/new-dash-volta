@@ -85,6 +85,19 @@ if nav_to and nav_to in PAGES:
 
 current_page = st.session_state[_PAGE_KEY]
 
+# ── Debug nav log (temporary) ─────────────────────────────────────────────
+if "_nav_debug" in st.session_state and st.session_state["_nav_debug"]:
+    _nav_debug = st.session_state.get("_nav_debug", [])
+    _nav_debug.append(f"app.py: nav_to={nav_to!r}  current_page={current_page!r}")
+    st.session_state["_nav_debug"] = _nav_debug
+    with st.expander("🔍 Debug — ניווט (זמני)", expanded=True):
+        for _line in _nav_debug:
+            st.write(_line)
+        if st.button("נקה לוג", key="_clear_nav_debug"):
+            del st.session_state["_nav_debug"]
+            st.rerun()
+# ─────────────────────────────────────────────────────────────────────────
+
 
 def _on_nav_change():
     st.session_state[_PAGE_KEY] = st.session_state[_NAV_KEY]
