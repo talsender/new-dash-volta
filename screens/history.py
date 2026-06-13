@@ -1,9 +1,13 @@
 # screens/history.py
 import streamlit as st
 import json
+import io
+import tempfile
+import os
 from modules.history_manager import load_history, save_month, delete_month
 from modules.month_calc import compute_month, build_snapshot
 from modules.config_manager import load_agents, load_settings
+from modules.excel_exporter import export_history_summary
 from modules import ui
 
 try:
@@ -151,6 +155,23 @@ def render():
         "פניקס":         h.get("total_phoenix", "—"),
     } for h in history]
     st.markdown(_rtl_table(table_rows), unsafe_allow_html=True)
+
+    # ── Excel export ─────────────────────────────────────────────────────────
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as _f:
+            _xl_path = _f.name
+        export_history_summary(history, _xl_path)
+        with open(_xl_path, "rb") as _f:
+            _xl_bytes = _f.read()
+        os.unlink(_xl_path)
+        st.download_button(
+            "📊 ייצא לאקסל",
+            _xl_bytes,
+            file_name="kpi_history_summary.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+    except Exception as _e:
+        st.warning(f"שגיאה בייצוא Excel: {_e}")
 
     # ── History management (delete) ──────────────────────────────────────────
     st.markdown("<br>", unsafe_allow_html=True)

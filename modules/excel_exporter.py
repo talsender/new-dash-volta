@@ -87,6 +87,108 @@ def _summary_row(ws, row, ncols, cells):
         if fmt: c.number_format = fmt
     ws.row_dimensions[row].height = 26
 
+
+# ── History summary export ────────────────────────────────────────────────────
+
+def export_history_summary(history: list, path: str) -> None:
+    """Write center-level monthly summary to an RTL-styled Excel file."""
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "סיכום חודשי"
+    ws.sheet_view.rightToLeft = True
+
+    COLS = [
+        ("חודש",          18, None),
+        ("שעות",          10, "#,##0.0"),
+        ("תיאומים",       12, "#,##0"),
+        ("תיאומים/שעה",   14, "#,##0.00"),
+        ("שיחות סרק",     12, "#,##0"),
+        ('סה"כ שיחות',    13, "#,##0"),
+        ("פניקס",         10, "#,##0"),
+    ]
+
+    # ── Title row ──────────────────────────────────────────────────────────
+    ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=len(COLS))
+    title_cell = ws.cell(1, 1, "סיכום חודשים — ביצועי מוקד")
+    title_cell.font      = Font(name="Calibri", bold=True, size=14, color=_WHITE)
+    title_cell.fill      = _fill(_NAVY)
+    title_cell.alignment = Alignment(horizontal="center", vertical="center",
+                                     readingOrder=2)
+    title_cell.border    = _B_HDR
+    ws.row_dimensions[1].height = 30
+
+    # ── Meta: generated date ───────────────────────────────────────────────
+    ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=len(COLS))
+    meta = ws.cell(2, 1, f"הופק: {datetime.now().strftime('%d/%m/%Y %H:%M')}")
+    meta.font      = Font(name="Calibri", size=9, color=_META_FG)
+    meta.fill      = _fill(_META_BG)
+    meta.alignment = Alignment(horizontal="center", vertical="center", readingOrder=2)
+    ws.row_dimensions[2].height = 16
+
+    # ── Header row ─────────────────────────────────────────────────────────
+    HDR_ROW = 3
+    for ci, (hdr, width, _) in enumerate(COLS, 1):
+        c = ws.cell(HDR_ROW, ci, hdr)
+        c.font      = Font(name="Calibri", bold=True, size=11, color=_WHITE)
+        c.fill      = _fill(_NAVY_MD)
+        c.alignment = _CTR
+        c.border    = _B_HDR
+        ws.column_dimensions[get_column_letter(ci)].width = width
+    ws.row_dimensions[HDR_ROW].height = 22
+
+    # ── Data rows ──────────────────────────────────────────────────────────
+    for ri, h in enumerate(history):
+        row = HDR_ROW + 1 + ri
+        meets = h.get("center_met_target", True)
+        stripe = _STRIPE if ri % 2 == 0 else _WHITE
+
+        def _v(key, fallback=0):
+            v = h.get(key, fallback)
+            return v if isinstance(v, (int, float)) else fallback
+
+        values = [
+            h.get("label", h.get("month", "")),
+            _v("total_hours"),
+            _v("total_meetings"),
+            _v("center_rate"),
+            _v("total_idle_calls"),
+            _v("total_calls", _v("total_answered_calls")),
+            _v("total_phoenix"),
+        ]
+
+        for ci, ((_, _, fmt), val) in enumerate(zip(COLS, values), 1):
+            bg = stripe
+            fg = _NAVY
+            if ci == 4:  # תיאומים/שעה — color by target
+                bg, fg = (_GOOD_BG, _GOOD_FG) if meets else (_WARN_BG, _WARN_FG)
+            c = ws.cell(row, ci, val)
+            c.font      = Font(name="Calibri", size=11, color=fg,
+                               bold=(ci == 1))
+            c.fill      = _fill(bg)
+            c.alignment = _CTR if ci > 1 else _RGT
+            c.border    = _B
+            if fmt and isinstance(val, (int, float)):
+                c.number_format = fmt
+        ws.row_dimensions[row].height = 20
+
+    # ── Totals / averages row ──────────────────────────────────────────────
+    if history:
+        sum_row = HDR_ROW + 1 + len(history)
+        numeric_cols = {
+            2: sum(h.get("total_hours", 0) for h in history),
+            3: sum(h.get("total_meetings", 0) for h in history),
+            4: (sum(h.get("center_rate", 0) for h in history) / len(history)),
+            5: sum(h.get("total_idle_calls", 0) for h in history),
+            6: sum(h.get("total_calls", h.get("total_answered_calls", 0)) for h in history),
+            7: sum(h.get("total_phoenix", 0) for h in history),
+        }
+        _summary_row(ws, sum_row, len(COLS), [
+            (1, "סה\"כ / ממוצע"),
+            *[(ci, val, COLS[ci - 1][2]) for ci, val in numeric_cols.items()],
+        ])
+
+    wb.save(path)
+
 def _header_row(ws, cols):
     for ci, label in enumerate(cols, 1):
         c = ws.cell(4, ci, label)
@@ -96,7 +198,7 @@ def _header_row(ws, cols):
 
 def _brand_header(ws, title, ncols, meta=""):
     ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=ncols)
-    c = ws.cell(1, 1, "⚡  Volta Solar  |  מוקד תיאומים")
+    c = ws.cell(1, 1, "⚡  Volta Solar  |  קורדיס")
     c.fill = _fill(_NAVY); c.font = Font(name="Calibri", bold=True, size=13, color=_GOLD)
     c.alignment = _CTR; ws.row_dimensions[1].height = 36
 
