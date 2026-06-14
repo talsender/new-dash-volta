@@ -80,8 +80,9 @@ def render():
         vc_row = vc_df[vc_df['משתמש'].str.lower().str.contains(vc_name.lower(), na=False, regex=False)]
         if not len(vc_row):
             vc_row = vc_df[vc_df['משתמש'].str.contains(agent['name'].split()[0], na=False, regex=False)]
-        answered = int(vc_row['נענו'].iloc[0]) if len(vc_row) else 0
-        occ_pct  = float(vc_row['אחוז תעסוקה נטו'].iloc[0]) if len(vc_row) else 0.0
+        answered    = int(vc_row['נענו'].iloc[0])             if len(vc_row) else 0
+        total_calls = int(vc_row['כניסות'].iloc[0])           if len(vc_row) else 0
+        occ_pct     = float(vc_row['אחוז תעסוקה נטו'].iloc[0]) if len(vc_row) else 0.0
         kpi_data.append({
             "agent_id": agent["id"], "name": agent["name"],
             "email": agent.get("email", ""), "hours": hours,
@@ -89,7 +90,9 @@ def render():
             "meetings_per_hour": calculate_meetings_per_hour(inp["meetings"], hours),
             "occupancy_pct": occ_pct, "idle_calls": inp["idle_calls"],
             "idle_pct": calculate_idle_pct(inp["idle_calls"], answered),
-            "answered_calls": answered, "phoenix": inp["phoenix"],
+            "answered_calls": answered,
+            "total_calls":    total_calls,
+            "phoenix": inp["phoenix"],
         })
 
     center_rate = calculate_center_rate([{"hours": k["hours"], "meetings": k["meetings"]} for k in kpi_data])

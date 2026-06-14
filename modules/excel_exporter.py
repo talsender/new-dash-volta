@@ -257,7 +257,7 @@ def export_weekly_kpi(kpi_data: list, filepath: str) -> None:
     ws.title = "KPI שבועי"
 
     COLS  = ["נציג", "שעות עבודה", "תיאומים", "תיאומים/שעה",
-             "תעסוקה %", "סרק %", "פניקס", "שיחות נענו"]
+             "תעסוקה %", "סרק %", "פניקס", 'סה"כ שיחות']
     ncols = len(COLS)
     ds    = _init_sheet(ws, "דוח KPI שבועי", ncols,
                         meta=f"הופק: {now}  |  נציגים: {len(kpi_data)}",
@@ -285,12 +285,12 @@ def export_weekly_kpi(kpi_data: list, filepath: str) -> None:
         _cell(ws, ri, 6, idl, bg=bg, fg=fg, fmt="0.00%")
 
         _cell(ws, ri, 7, a["phoenix"],                bg=stripe)
-        _cell(ws, ri, 8, a.get("answered_calls", 0),  bg=stripe)
+        _cell(ws, ri, 8, a.get("total_calls", a.get("answered_calls", 0)), bg=stripe)
 
     n  = len(kpi_data)
     tm = sum(a["meetings"]               for a in kpi_data)
     th = sum(a["hours"]                  for a in kpi_data)
-    ta = sum(a.get("answered_calls", 0)  for a in kpi_data)
+    ta = sum(a.get("total_calls", a.get("answered_calls", 0)) for a in kpi_data)
     tp = sum(a["phoenix"]                for a in kpi_data)
     cmph     = round(tm / th, 2) if th else 0
     avg_occ  = sum(a["occupancy_pct"] for a in kpi_data) / n if n else 0
