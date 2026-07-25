@@ -49,13 +49,11 @@ _page_list = list(PAGES.keys())
 # Volta Solar V logo — triangular striped arms
 _LOGO = (
     '<svg viewBox="0 0 100 90" xmlns="http://www.w3.org/2000/svg" width="76" height="68">'
-    # Blue left arm — 5 triangular stripes
     '<polygon points="0,3 10,3 50,87" fill="#173E80"/>'
     '<polygon points="10,3 20,3 50,87" fill="#2060B8"/>'
     '<polygon points="20,3 30,3 50,87" fill="#1B5FAA"/>'
     '<polygon points="30,3 40,3 50,87" fill="#2570CC"/>'
     '<polygon points="40,3 50,3 50,87" fill="#1B5FAA"/>'
-    # Gold right arm — 5 triangular stripes
     '<polygon points="50,3 60,3 50,87" fill="#D08800"/>'
     '<polygon points="60,3 70,3 50,87" fill="#F5A800"/>'
     '<polygon points="70,3 80,3 50,87" fill="#E09600"/>'
@@ -95,7 +93,7 @@ with st.sidebar:
         f'<div style="text-align:center;padding:28px 12px 20px;direction:rtl;">'
         f'{_LOGO}'
         f'<div style="color:#EDF2F7;font-size:16px;font-weight:800;margin-top:12px;letter-spacing:0.5px;">Volta Solar</div>'
-        f'<div style="color:#4A6A8A;font-size:10px;font-weight:500;margin-top:4px;letter-spacing:1.5px;text-transform:uppercase;">מוקד תיאומים</div>'
+        f'<div style="color:#4A6A8A;font-size:10px;font-weight:500;margin-top:4px;letter-spacing:1.5px;text-transform:uppercase;">קורדיס</div>'
         f'</div>'
         f'<div style="height:1px;background:linear-gradient(90deg,transparent,rgba(245,168,0,0.3),transparent);margin:0 16px 20px;"></div>',
         unsafe_allow_html=True,

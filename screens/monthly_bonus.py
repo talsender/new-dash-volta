@@ -127,12 +127,13 @@ def render():
     ui.section_header("פירוט לנציגים")
     for k, b in zip(kpi_data, bonus_data):
         with st.expander(f"{k['name']}  —  סה\"כ ₪{b['total']:,}", key=f"exp_{k['agent_id']}"):
-            c1, c2, c3, c4, c5 = st.columns(5)
-            c1.metric("שעות",        f"{k['hours']:.1f}")
-            c2.metric("תיאומים",     k["meetings"])
-            c3.metric("תיאומים/שעה", f"{k['meetings_per_hour']:.2f}")
-            c4.metric("תעסוקה",      f"{k['occupancy_pct']*100:.1f}%")
-            c5.metric("סרק",         f"{k['idle_pct']*100:.2f}%")
+            c1, c2, c3, c4, c5, c6 = st.columns(6)
+            c1.metric("שעות",         f"{k['hours']:.1f}")
+            c2.metric("תיאומים",      k["meetings"])
+            c3.metric("תיאומים/שעה",  f"{k['meetings_per_hour']:.2f}")
+            c4.metric("תעסוקה",       f"{k['occupancy_pct']*100:.1f}%")
+            c5.metric("סרק",          f"{k['idle_pct']*100:.2f}%")
+            c6.metric('סה"כ שיחות',   k.get("total_calls", k.get("answered_calls", 0)))
             st.dataframe(
                 [
                     {"רכיב": "עמלת תיאומים",    "₪": b["meetings_bonus"]},

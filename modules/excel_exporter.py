@@ -272,9 +272,9 @@ def export_weekly_kpi(kpi_data: list, filepath: str) -> None:
         _cell(ws, ri, 2, round(a["hours"], 1),  bg=stripe, fmt="0.0")
         _cell(ws, ri, 3, a["meetings"],          bg=stripe)
 
-        mph = round(a["meetings_per_hour"], 2)
+        mph = a["meetings_per_hour"]
         bg, fg = _status_color(mph, mph_good, mph_warn, True)
-        _cell(ws, ri, 4, mph, bg=bg, fg=fg, bold=True, fmt="0.00")
+        _cell(ws, ri, 4, f"=C{ri}/B{ri}", bg=bg, fg=fg, bold=True, fmt="0.00")
 
         occ = a["occupancy_pct"]
         bg, fg = _status_color(occ, occ_good, occ_warn, True)
@@ -299,17 +299,17 @@ def export_weekly_kpi(kpi_data: list, filepath: str) -> None:
     sr = n + ds
     _summary_row(ws, sr, ncols, [
         (1, "סיכום מוקד"),
-        (2, round(th, 1), "0.0"),
-        (3, tm),
-        (4, cmph, "0.00"),
-        (7, tp),
-        (8, ta),
+        (2, f"=SUM(B{ds}:B{sr-1})", "0.0"),
+        (3, f"=SUM(C{ds}:C{sr-1})"),
+        (4, f"=C{sr}/B{sr}", "0.00"),
+        (7, f"=SUM(G{ds}:G{sr-1})"),
+        (8, f"=SUM(H{ds}:H{sr-1})"),
     ])
-    for col, val, fmt, bg, fg in [
-        (5, avg_occ,  "0.0%",  *_status_color(avg_occ,  occ_good,  occ_warn,  True)),
-        (6, avg_idle, "0.00%", *_status_color(avg_idle, idle_good, idle_warn, False)),
+    for col, col_letter, avg_val, fmt, bg, fg in [
+        (5, "E", avg_occ,  "0.0%",  *_status_color(avg_occ,  occ_good,  occ_warn,  True)),
+        (6, "F", avg_idle, "0.00%", *_status_color(avg_idle, idle_good, idle_warn, False)),
     ]:
-        c = ws.cell(sr, col, val)
+        c = ws.cell(sr, col, f"=AVERAGE({col_letter}{ds}:{col_letter}{sr-1})")
         c.fill = _fill(bg); c.font = _font(fg, bold=True)
         c.border = _B_SUM; c.alignment = _CTR; c.number_format = fmt
 
@@ -375,7 +375,7 @@ def export_monthly_bonus(bonus_data: list, billing: dict,
 
     _summary_row(ws, mgr_ri + 1, n, [
         (1, 'סה"כ לתשלום'),
-        (3, grand_total, "#,##0 ₪"),
+        (3, f"=SUM(C{ds}:C{mgr_ri})", "#,##0 ₪"),
     ])
     _autofit(ws, {"A": 22, "B": 20, "C": 22})
     _print_setup(ws)
@@ -385,7 +385,7 @@ def export_monthly_bonus(bonus_data: list, billing: dict,
     COLS2 = [
         "שם נציג", "שעות", "תיאומים", "תיאומים/שעה",
         "עמלת תיאומים", "תעסוקה %", "בונוס תעסוקה",
-        "שיחות סרק", "% סרק", "בונוס סרק",
+        "שיחות סרק", 'סה"כ שיחות', "% סרק", "בונוס סרק",
         "ציון משוב", "בונוס משוב",
         f"עסקת פניקס ({ph_client_rate}₪)", "בונוס ליעד צוותי",
         'סה"כ',
@@ -445,27 +445,34 @@ def export_monthly_bonus(bonus_data: list, billing: dict,
         if fs is not None:
             _fb_scores.append(fs)
 
+        tc = k.get("total_calls", k.get("answered_calls", 0))
+
         _cell(ws2, ri,  1, b["name"],          bg=stripe, align=_RGT, bold=True)
         _cell(ws2, ri,  2, hrs,                 bg=stripe, fmt="0.0")
         _cell(ws2, ri,  3, mtg,                 bg=stripe)
         bg, fg = _status_color(mph, mph_good, mph_warn, True)
-        _cell(ws2, ri,  4, round(mph, 2),       bg=bg, fg=fg, fmt="0.00")
-        _bonus_cell(ws2, ri,  5, mtg_base,      stripe)
+        _cell(ws2, ri,  4, f"=C{ri}/B{ri}",   bg=bg, fg=fg, fmt="0.00")
+        bg5 = _GOOD_BG if mtg_base > 0 else stripe
+        fg5 = _GOOD_FG if mtg_base > 0 else _META_FG
+        _cell(ws2, ri,  5, f"=IF(D{ri}>={mph_good},C{ri}*{rate_a},C{ri}*{rate_b})",
+              bg=bg5, fg=fg5, fmt="#,##0 ₪")
         bg, fg = _status_color(occ, occ_good, occ_warn, True)
         _cell(ws2, ri,  6, occ,                 bg=bg, fg=fg, fmt="0.0%")
         _bonus_cell(ws2, ri,  7, b["occupancy_bonus"], stripe)
         _cell(ws2, ri,  8, k.get("idle_calls", 0), bg=stripe)
+        _cell(ws2, ri,  9, tc,                  bg=stripe, fmt="#,##0")
         bg, fg = _status_color(idl, idle_good, idle_warn, False)
-        _cell(ws2, ri,  9, idl,                 bg=bg, fg=fg, fmt="0.00%")
-        _bonus_cell(ws2, ri, 10, b["idle_bonus"], stripe)
+        _cell(ws2, ri, 10, idl,                 bg=bg, fg=fg, fmt="0.00%")
+        _bonus_cell(ws2, ri, 11, b["idle_bonus"], stripe)
         fb_bg = _GOOD_BG if fs and fs >= 8.5 else _WARN_BG if fs and fs >= 8.0 else stripe
-        _cell(ws2, ri, 11, fs if fs is not None else "—",
+        _cell(ws2, ri, 12, fs if fs is not None else "—",
               bg=fb_bg, fmt="0.0" if fs else None)
-        _bonus_cell(ws2, ri, 12, b["feedback_bonus"], stripe)
-        _bonus_cell(ws2, ri, 13, ph_val,         stripe)
-        _bonus_cell(ws2, ri, 14, ctr_bonus,      stripe)
+        _bonus_cell(ws2, ri, 13, b["feedback_bonus"], stripe)
+        _bonus_cell(ws2, ri, 14, ph_val,         stripe)
+        _bonus_cell(ws2, ri, 15, ctr_bonus,      stripe)
         bg, fg = _bonus_color(row_total)
-        _cell(ws2, ri, 15, row_total, bg=bg, fg=fg, bold=True, fmt="#,##0 ₪")
+        _cell(ws2, ri, 16, f"=E{ri}+G{ri}+K{ri}+M{ri}+N{ri}+O{ri}",
+              bg=bg, fg=fg, bold=True, fmt="#,##0 ₪")
 
     _n2       = len(bonus_data) or 1
     _avg_occ  = _sum_occ  / _n2
@@ -473,27 +480,29 @@ def export_monthly_bonus(bonus_data: list, billing: dict,
     _avg_fb   = sum(_fb_scores) / len(_fb_scores) if _fb_scores else None
     _cmph     = _sum_mtg / _sum_hrs if _sum_hrs else 0
 
-    _summary_row(ws2, len(bonus_data) + ds2, n2, [
+    sr2 = len(bonus_data) + ds2
+    _summary_row(ws2, sr2, n2, [
         (1,  'סה"כ'),
-        (2,  round(_sum_hrs, 1),   "0.0"),
-        (3,  _sum_mtg),
-        (4,  round(_cmph, 2),      "0.00"),
-        (5,  _sum_mtg_base,        "#,##0 ₪"),
-        (6,  _avg_occ,             "0.0%"),
-        (7,  _sum_occ_bonus,       "#,##0 ₪"),
-        (8,  _sum_idle_calls),
-        (9,  _avg_idle,            "0.00%"),
-        (10, _sum_idle_bonus,      "#,##0 ₪"),
-        (11, round(_avg_fb, 1) if _avg_fb is not None else "—",
+        (2,  f"=SUM(B{ds2}:B{sr2-1})",     "0.0"),
+        (3,  f"=SUM(C{ds2}:C{sr2-1})"),
+        (4,  f"=C{sr2}/B{sr2}",             "0.00"),
+        (5,  f"=SUM(E{ds2}:E{sr2-1})",      "#,##0 ₪"),
+        (6,  f"=AVERAGE(F{ds2}:F{sr2-1})",  "0.0%"),
+        (7,  f"=SUM(G{ds2}:G{sr2-1})",      "#,##0 ₪"),
+        (8,  f"=SUM(H{ds2}:H{sr2-1})"),
+        (9,  f"=SUM(I{ds2}:I{sr2-1})"),
+        (10, f"=AVERAGE(J{ds2}:J{sr2-1})",  "0.00%"),
+        (11, f"=SUM(K{ds2}:K{sr2-1})",      "#,##0 ₪"),
+        (12, round(_avg_fb, 1) if _avg_fb is not None else "—",
              "0.0" if _avg_fb is not None else None),
-        (12, _sum_fb_bonus,        "#,##0 ₪"),
-        (13, _sum_ph_val,          "#,##0 ₪"),
-        (14, _sum_ctr_bonus,       "#,##0 ₪"),
-        (15, sum(detail_totals),   "#,##0 ₪"),
+        (13, f"=SUM(M{ds2}:M{sr2-1})",      "#,##0 ₪"),
+        (14, f"=SUM(N{ds2}:N{sr2-1})",      "#,##0 ₪"),
+        (15, f"=SUM(O{ds2}:O{sr2-1})",      "#,##0 ₪"),
+        (16, f"=SUM(P{ds2}:P{sr2-1})",      "#,##0 ₪"),
     ])
     _autofit(ws2, {"A": 20, "B": 10, "C": 12, "D": 14, "E": 16,
-                   "F": 12, "G": 16, "H": 14, "I": 10, "J": 14,
-                   "K": 12, "L": 14, "M": 18, "N": 18, "O": 14})
+                   "F": 12, "G": 16, "H": 14, "I": 14, "J": 10, "K": 14,
+                   "L": 12, "M": 14, "N": 18, "O": 18, "P": 14})
     _print_setup(ws2)
 
     # ── 3. סיכום מוקד ────────────────────────────────────────────────────────
@@ -505,9 +514,10 @@ def export_monthly_bonus(bonus_data: list, billing: dict,
 
     summary_rows = []
     if kpi_data:
-        tm  = sum(k["meetings"]      for k in kpi_data)
-        th  = sum(k["hours"]         for k in kpi_data)
-        tph = sum(k["phoenix"]       for k in kpi_data)
+        tm       = sum(k["meetings"]      for k in kpi_data)
+        th       = sum(k["hours"]         for k in kpi_data)
+        tph      = sum(k["phoenix"]       for k in kpi_data)
+        tc_total = sum(k.get("total_calls", k.get("answered_calls", 0)) for k in kpi_data)
         ao  = sum(k["occupancy_pct"] for k in kpi_data) / len(kpi_data)
         ai  = sum(k["idle_pct"]      for k in kpi_data) / len(kpi_data)
         cmph = tm / th if th else 0
@@ -518,6 +528,7 @@ def export_monthly_bonus(bonus_data: list, billing: dict,
             ("ממוצע תעסוקה",            f"{ao*100:.1f}%",     f"≥{occ_good*100:.0f}%", ao >= occ_good),
             ("ממוצע סרק",               f"{ai*100:.2f}%",     f"≤{idle_good*100:.0f}%", ai <= idle_good),
             ('סה"כ פניקס (עסקאות)',    tph,                   "—",               None),
+            ('סה"כ שיחות',             tc_total,              "—",               None),
         ]
     summary_rows += [
         ('סה"כ בונוסים נציגים (₪)',           agents_total,  "—", None),
@@ -619,6 +630,10 @@ def _populate_agent_sheet(ws, kpi: dict, bonus: dict,
          kpi.get("idle_calls", 0), None,
          "—", None, None, None),
 
+        ('סה"כ שיחות',
+         kpi.get("total_calls", kpi.get("answered_calls", 0)), None,
+         "—", None, None, None),
+
         ("אחוז סרק",
          idl, "0.00%",
          f"≤ {idle_good*100:.0f}%",
@@ -655,7 +670,7 @@ def _populate_agent_sheet(ws, kpi: dict, bonus: dict,
     bg, fg = _bonus_color(total)
     _summary_row(ws, total_row, ncols, [
         (1, 'סה"כ בונוס לתשלום'),
-        (4, total, "#,##0 ₪"),
+        (4, f"=SUM(D{ds}:D{total_row-1})", "#,##0 ₪"),
     ])
     ws.cell(total_row, 4).fill = _fill(bg)
     ws.cell(total_row, 4).font = _font(fg, bold=True, size=14)
