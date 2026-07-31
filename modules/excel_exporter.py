@@ -571,8 +571,16 @@ def _populate_agent_sheet(ws, kpi: dict, bonus: dict,
                           center_meets: bool = False) -> None:
     occ_good    = s["occupancy_tier_a_pct"] / 100
     occ_warn    = s["occupancy_tier_b_pct"] / 100
+    occ_bon_a   = s["occupancy_tier_a_bonus"]
+    occ_bon_b   = s["occupancy_tier_b_bonus"]
     idle_good   = s["idle_tier_a_pct"] / 100
     idle_warn   = s["idle_tier_b_pct"] / 100
+    idle_bon_a  = s["idle_tier_a_bonus"]
+    idle_bon_b  = s["idle_tier_b_bonus"]
+    fb_a        = s["feedback_tier_a_score"]
+    fb_b        = s["feedback_tier_b_score"]
+    fb_bon_a    = s["feedback_tier_a_bonus"]
+    fb_bon_b    = s["feedback_tier_b_bonus"]
     mph_good    = s["meetings_per_hour_tier_a"]
     mph_warn    = mph_good * 0.75
     rate_a      = s["meetings_per_hour_tier_a_rate"]
@@ -587,7 +595,6 @@ def _populate_agent_sheet(ws, kpi: dict, bonus: dict,
     fs       = kpi.get("feedback_score")
     ph_count = kpi.get("phoenix", 0)
     base_r   = rate_a if mph >= mph_good else rate_b
-    mtg_base = meetings * base_r
     ctr_b    = meetings * center_rate if center_meets else 0
 
     ncols = 4
@@ -596,80 +603,115 @@ def _populate_agent_sheet(ws, kpi: dict, bonus: dict,
                         tab_color=_GOLD)
     _header_row(ws, ["מדד", "ביצועים", "יעד", "בונוס (₪)"])
 
+    # Pre-compute row indices for formula cross-references
+    r_hrs    = ds        # שעות עבודה
+    r_mtg    = ds + 1   # תיאומים
+    r_mph    = ds + 2   # תיאומים לשעה
+    r_mtgb   = ds + 3   # עמלת תיאומים
+    r_ctr    = ds + 4   # בונוס ליעד צוותי
+    r_occ    = ds + 5   # אחוז תעסוקה
+    r_idlc   = ds + 6   # שיחות סרק
+    r_totc   = ds + 7   # סה"כ שיחות
+    r_idl    = ds + 8   # אחוז סרק
+    r_fb     = ds + 9   # ציון משוב
+    r_ph     = ds + 10  # עסקת פניקס
+
     rows = [
-        ("שעות עבודה",
+        (r_hrs,  "שעות עבודה",
          round(kpi.get("hours", 0), 1), "0.0",
-         "—", None, None, None),
+         "—", None, None, "—"),
 
-        ("תיאומים",
+        (r_mtg,  "תיאומים",
          meetings, None,
-         "—", None, None, None),
+         "—", None, None, "—"),
 
-        ("תיאומים לשעה",
-         round(mph, 2), "0.00",
+        (r_mph,  "תיאומים לשעה",
+         f"=B{r_mtg}/B{r_hrs}", "0.00",
          f"≥ {mph_good}",
-         *_status_color(mph, mph_good, mph_warn, True), None),
+         *_status_color(mph, mph_good, mph_warn, True), "—"),
 
-        ("עמלת תיאומים",
-         f"{meetings} × {base_r}₪", None,
-         f"שער {'A' if base_r == rate_a else 'B'}",
-         _GOOD_BG, _GOOD_FG, mtg_base),
+        (r_mtgb, "עמלת תיאומים",
+         f"שער {'A' if base_r == rate_a else 'B'}  ({base_r}₪ לתיאום)", None,
+         f"=IF(B{r_mph}>={mph_good},{rate_a},{rate_b})₪ × תיאומים",
+         _GOOD_BG, _GOOD_FG,
+         f"=IF(B{r_mph}>={mph_good},B{r_mtg}*{rate_a},B{r_mtg}*{rate_b})"),
 
-        ("בונוס ליעד צוותי",
+        (r_ctr,  "בונוס ליעד צוותי",
          "✅ עמד" if center_meets else "❌ לא עמד", None,
          f"+{center_rate}₪ לתיאום",
          _GOOD_BG if center_meets else _BAD_BG,
          _GOOD_FG if center_meets else _BAD_FG,
-         ctr_b),
+         f"=B{r_mtg}*{center_rate}*{int(center_meets)}"),
 
-        ("אחוז תעסוקה",
+        (r_occ,  "אחוז תעסוקה",
          occ, "0.0%",
          f"≥ {occ_good*100:.0f}%",
          *_status_color(occ, occ_good, occ_warn, True),
-         bonus["occupancy_bonus"]),
+         f"=IF(B{r_occ}>={occ_good},{occ_bon_a},IF(B{r_occ}>={occ_warn},{occ_bon_b},0))"),
 
-        ("שיחות סרק",
+        (r_idlc, "שיחות סרק",
          kpi.get("idle_calls", 0), None,
-         "—", None, None, None),
+         "—", None, None, "—"),
 
-        ('סה"כ שיחות',
+        (r_totc, 'סה"כ שיחות',
          kpi.get("total_calls", kpi.get("answered_calls", 0)), None,
-         "—", None, None, None),
+         "—", None, None, "—"),
 
-        ("אחוז סרק",
+        (r_idl,  "אחוז סרק",
          idl, "0.00%",
          f"≤ {idle_good*100:.0f}%",
          *_status_color(idl, idle_good, idle_warn, False),
-         bonus["idle_bonus"]),
+         f"=IF(B{r_idl}<={idle_good},{idle_bon_a},IF(B{r_idl}<={idle_warn},{idle_bon_b},0))"),
 
-        ("ציון משוב",
+        (r_fb,   "ציון משוב",
          fs if fs is not None else "—", "0.0" if fs else None,
-         "≥ 8.0",
-         _GOOD_BG if fs and fs >= 8.5 else _WARN_BG if fs and fs >= 8.0 else None, None,
-         bonus["feedback_bonus"]),
+         f"≥ {fb_b}",
+         _GOOD_BG if fs and fs >= fb_a else _WARN_BG if fs and fs >= fb_b else None, None,
+         f"=IF(ISNUMBER(B{r_fb}),IF(B{r_fb}>={fb_a},{fb_bon_a},IF(B{r_fb}>={fb_b},{fb_bon_b},0)),0)"),
 
-        ("עסקת פניקס",
-         f"{ph_count} עסקאות", None,
+        (r_ph,   "עסקת פניקס",
+         ph_count, None,
          f"{ph_emp_rate}₪ לעסקה",
          _GOOD_BG if ph_count > 0 else None, _GOOD_FG if ph_count > 0 else None,
-         bonus["phoenix_bonus"]),
+         f"=B{r_ph}*{ph_emp_rate}"),
     ]
 
-    for ri, (label, perf, pfmt, target, p_bg, p_fg, bval) in enumerate(rows, ds):
+    for ri, label, perf, pfmt, target, p_bg, p_fg, bval in rows:
         stripe = _STRIPE if ri % 2 == 0 else _WHITE
         ws.row_dimensions[ri].height = 22
         _cell(ws, ri, 1, label,  bg=stripe, align=_RGT, bold=True)
         _cell(ws, ri, 2, perf,   bg=p_bg or stripe, fg=p_fg, fmt=pfmt)
         _cell(ws, ri, 3, target, bg=stripe, fg=_META_FG)
-        if bval is not None:
-            _bonus_cell(ws, ri, 4, bval, stripe)
-        else:
+        if bval == "—":
             _cell(ws, ri, 4, "—", bg=stripe, fg=_META_FG)
+        else:
+            # formula string: write & keep styling of bonus cell
+            stripe_d = _STRIPE if ri % 2 == 0 else _WHITE
+            py_val = 0
+            try:
+                py_val = float(bval) if not str(bval).startswith("=") else 1
+            except (TypeError, ValueError):
+                pass
+            bg_d = _GOOD_BG if py_val > 0 else stripe_d
+            fg_d = _GOOD_FG if py_val > 0 else _META_FG
+            if str(bval).startswith("="):
+                # formula — color based on Python-computed value for reference
+                bname_map = {
+                    r_mtgb: bonus["meetings_bonus"] - ctr_b,
+                    r_ctr:  ctr_b,
+                    r_occ:  bonus["occupancy_bonus"],
+                    r_idl:  bonus["idle_bonus"],
+                    r_fb:   bonus["feedback_bonus"],
+                    r_ph:   bonus["phoenix_bonus"],
+                }
+                py_ref = bname_map.get(ri, 0)
+                bg_d = _GOOD_BG if py_ref > 0 else stripe_d
+                fg_d = _GOOD_FG if py_ref > 0 else _META_FG
+            _cell(ws, ri, 4, bval, bg=bg_d, fg=fg_d, bold=True, fmt="#,##0 ₪")
 
-    total     = bonus["total"]
-    total_row = ds + len(rows)
+    total_row = r_ph + 1
     ws.row_dimensions[total_row].height = 28
-    bg, fg = _bonus_color(total)
+    bg, fg = _bonus_color(bonus["total"])
     _summary_row(ws, total_row, ncols, [
         (1, 'סה"כ בונוס לתשלום'),
         (4, f"=SUM(D{ds}:D{total_row-1})", "#,##0 ₪"),
@@ -677,7 +719,80 @@ def _populate_agent_sheet(ws, kpi: dict, bonus: dict,
     ws.cell(total_row, 4).fill = _fill(bg)
     ws.cell(total_row, 4).font = _font(fg, bold=True, size=14)
 
-    _autofit(ws, {"A": 26, "B": 18, "C": 22, "D": 16})
+    # ── Feedback details section ──────────────────────────────────────────────
+    fb_details = kpi.get("feedback_details") or {}
+    criteria   = fb_details.get("criteria", [])
+    strengths  = fb_details.get("strengths", [])
+    improvs    = fb_details.get("improvements", [])
+
+    if criteria or strengths or improvs:
+        cur = total_row + 2  # blank separator
+
+        # Section header
+        ws.merge_cells(start_row=cur, start_column=1, end_row=cur, end_column=ncols)
+        c = ws.cell(cur, 1, "פירוט משוב")
+        c.fill = _fill(_NAVY_MD); c.font = _font(_GOLD, bold=True, size=12)
+        c.alignment = _CTR; ws.row_dimensions[cur].height = 24
+        cur += 1
+
+        # Criteria table
+        if criteria:
+            _cell(ws, cur, 1, "קריטריון",     bg=_NAVY, fg=_GOLD, bold=True)
+            _cell(ws, cur, 2, "ציון ממוצע",   bg=_NAVY, fg=_GOLD, bold=True)
+            _cell(ws, cur, 3, "ציון שיחה 1", bg=_NAVY, fg=_GOLD, bold=True)
+            _cell(ws, cur, 4, "ציון שיחה 2+",bg=_NAVY, fg=_GOLD, bold=True)
+            ws.row_dimensions[cur].height = 20
+            cur += 1
+
+            for ci, crit in enumerate(criteria):
+                stripe = _STRIPE if ci % 2 == 0 else _WHITE
+                avg = crit["avg"]
+                avg_bg = _GOOD_BG if avg >= fb_a else _WARN_BG if avg >= fb_b else _BAD_BG
+                avg_fg = _GOOD_FG if avg >= fb_a else _WARN_FG if avg >= fb_b else _BAD_FG
+                _cell(ws, cur, 1, crit["label"], bg=stripe, align=_RGT, bold=True)
+                _cell(ws, cur, 2, avg,           bg=avg_bg, fg=avg_fg, fmt="0.0", bold=True)
+                scores = crit.get("scores", [])
+                _cell(ws, cur, 3, scores[0] if len(scores) > 0 else "—", bg=stripe, fmt="0.0")
+                extra = f"{', '.join(str(x) for x in scores[1:])}" if len(scores) > 1 else "—"
+                _cell(ws, cur, 4, extra, bg=stripe)
+                ws.row_dimensions[cur].height = 20
+                cur += 1
+
+        # Strengths
+        if strengths:
+            cur += 1
+            ws.merge_cells(start_row=cur, start_column=1, end_row=cur, end_column=ncols)
+            c = ws.cell(cur, 1, "✅  נקודות לשימור")
+            c.fill = _fill(_GOOD_BG); c.font = _font(_GOOD_FG, bold=True)
+            c.alignment = _RGT; ws.row_dimensions[cur].height = 20
+            cur += 1
+            for txt in strengths:
+                ws.merge_cells(start_row=cur, start_column=1, end_row=cur, end_column=ncols)
+                c = ws.cell(cur, 1, f"• {txt}")
+                c.fill = _fill(_STRIPE); c.font = _font(_NAVY)
+                c.alignment = Alignment(horizontal="right", vertical="center",
+                                        readingOrder=2, wrap_text=True)
+                ws.row_dimensions[cur].height = 32
+                cur += 1
+
+        # Improvements
+        if improvs:
+            cur += 1
+            ws.merge_cells(start_row=cur, start_column=1, end_row=cur, end_column=ncols)
+            c = ws.cell(cur, 1, "📌  נקודות לשיפור")
+            c.fill = _fill(_WARN_BG); c.font = _font(_WARN_FG, bold=True)
+            c.alignment = _RGT; ws.row_dimensions[cur].height = 20
+            cur += 1
+            for txt in improvs:
+                ws.merge_cells(start_row=cur, start_column=1, end_row=cur, end_column=ncols)
+                c = ws.cell(cur, 1, f"• {txt}")
+                c.fill = _fill(_STRIPE); c.font = _font(_NAVY)
+                c.alignment = Alignment(horizontal="right", vertical="center",
+                                        readingOrder=2, wrap_text=True)
+                ws.row_dimensions[cur].height = 32
+                cur += 1
+
+    _autofit(ws, {"A": 28, "B": 20, "C": 24, "D": 16})
     _print_setup(ws)
 
 

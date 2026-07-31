@@ -120,23 +120,75 @@ def parse_voicenter(filepath: str) -> pd.DataFrame:
 
 
 def parse_feedback(filepath: str) -> dict:
+    """Returns {agent_name: {'score': float, 'criteria': [...], 'strengths': [...], 'improvements': [...]}}"""
     import openpyxl
-    scores = {}
+    result = {}
+    _SKIP = {'.', 'מדדים', 'מדדים '}
     wb = openpyxl.load_workbook(filepath, data_only=True)
     for sname in wb.sheetnames:
-        ws = wb[sname]
+        if sname.strip() in _SKIP:
+            continue
+        ws   = wb[sname]
+        agent = sname.strip()
+        score = None
+        criteria, strengths, improvements = [], [], []
+        mode = None  # 'strengths' | 'improvements' | None
+
         for row in ws.iter_rows(values_only=True):
-            if not row:
+            if not any(v is not None for v in row):
                 continue
             label = str(row[0]).strip() if row[0] is not None else ""
-            if label and ('ציון' in label):
-                # find first numeric value in the row (column index >= 1)
-                for cell in row[1:]:
+
+            # Section transitions
+            if 'לשימור' in label:
+                mode = 'strengths';    continue
+            if 'לשיפור' in label:
+                mode = 'improvements'; continue
+            if any(m in label for m in ('הערות כלליות', 'סיכום שיחה', 'פרטי פניה')):
+                mode = None;           continue
+
+            # Overall score (first occurrence only)
+            if score is None and 'ציון' in label:
+                for v in row[1:6]:
                     try:
-                        score = float(cell)
-                        scores[sname.strip()] = score
-                        break
+                        s = float(v)
+                        if 1 <= s <= 10:
+                            score = s; break
+                        if 10 < s <= 100:
+                            score = round(s / 10, 2); break
                     except (TypeError, ValueError):
-                        continue
-                break
-    return scores
+                        pass
+                continue
+
+            # Strength / improvement bullets
+            if mode == 'strengths' and label:
+                strengths.append(label); continue
+            if mode == 'improvements' and label:
+                improvements.append(label); continue
+
+            # Criterion row: has numeric scores in cols C-F in range 1-10,
+            # and has a description in col B
+            if mode is None and label and row[1] is not None:
+                call_scores = []
+                for v in row[2:6]:
+                    try:
+                        s = float(v)
+                        if 1 <= s <= 10:
+                            call_scores.append(round(s, 2))
+                    except (TypeError, ValueError):
+                        pass
+                if call_scores:
+                    criteria.append({
+                        'label':  label,
+                        'scores': call_scores,
+                        'avg':    round(sum(call_scores) / len(call_scores), 2),
+                    })
+
+        if score is not None or criteria:
+            result[agent] = {
+                'score':        score,
+                'criteria':     criteria,
+                'strengths':    strengths[:6],
+                'improvements': improvements[:6],
+            }
+    return result

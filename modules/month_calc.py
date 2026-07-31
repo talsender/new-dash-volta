@@ -29,29 +29,29 @@ def _save_upload(uploaded, suffix):
     return f.name
 
 
-def _get_feedback(scores: dict, agent_name: str, feedback_name: str = None):
+def _find_feedback_entry(scores: dict, agent_name: str, feedback_name: str = None):
+    """Return the raw entry (dict or float) for an agent, or None."""
     if not scores:
         return None
-    if feedback_name:
-        fb = feedback_name.strip()
-        if fb in scores:
-            return scores[fb]
-        fb_l = fb.lower()
+    for name in ([feedback_name.strip()] if feedback_name else []) + [agent_name.strip()]:
+        if name in scores:
+            return scores[name]
+        nl = name.lower()
+        fl = name.split()[0].lower()
         for key, val in scores.items():
-            if key.strip().lower() == fb_l:
+            kl = key.strip().lower()
+            if kl == nl or kl in nl or nl in kl:
                 return val
-    name = agent_name.strip()
-    if name in scores:
-        return scores[name]
-    name_l  = name.lower()
-    first_l = name.split()[0].lower()
-    for key, val in scores.items():
-        key_l = key.strip().lower()
-        if key_l in name_l or name_l in key_l:
-            return val
-        if first_l == key_l or key_l.startswith(first_l) or first_l.startswith(key_l):
-            return val
+            if fl == kl or kl.startswith(fl) or fl.startswith(kl):
+                return val
     return None
+
+
+def _get_feedback(scores: dict, agent_name: str, feedback_name: str = None):
+    entry = _find_feedback_entry(scores, agent_name, feedback_name)
+    if entry is None:
+        return None
+    return entry.get('score') if isinstance(entry, dict) else entry
 
 
 def compute_month(att_file, vc_file, fb_file, manual, agents, settings, month_label, month_key=None):
@@ -101,6 +101,8 @@ def compute_month(att_file, vc_file, fb_file, manual, agents, settings, month_la
             "phoenix": inp["phoenix"],
             "feedback_score": _get_feedback(feedback_scores, agent["name"],
                                             feedback_name=agent.get("feedback_name")),
+            "feedback_details": _find_feedback_entry(feedback_scores, agent["name"],
+                                                     feedback_name=agent.get("feedback_name")),
         })
 
     center_rate  = calculate_center_rate([{"hours": k["hours"], "meetings": k["meetings"]} for k in kpi_data])
