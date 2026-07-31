@@ -349,35 +349,37 @@ def export_monthly_bonus(bonus_data: list, billing: dict,
     wb = openpyxl.Workbook()
     wb.remove(wb.active)
 
-    # ── 1. לתשלום — agents + manager, agent phoenix @ 50 ₪ ──────────────────
+    # ── 1. לתשלום — format matches טמפלט בונוס: מנהל|מספר עובד|שם מלא|בונוס ──
     ws = wb.create_sheet("לתשלום")
-    n  = 3
+    n  = 4
     ds = _init_sheet(ws, f"בונוסים לתשלום  |  {month_label}", n,
                      meta=f"הופק: {now}  |  נציגים: {len(bonus_data)}  |  סה\"כ ₪{grand_total:,.0f}",
                      tab_color=_NAVY)
-    _header_row(ws, ["שם", "מספר עובד / תפקיד", "בונוס לתשלום (₪)"])
+    _header_row(ws, ["מנהל", "מספר עובד", "שם מלא", "בונוס"])
     ws.freeze_panes = "A5"
 
     for ri, b in enumerate(bonus_data, ds):
         stripe = _STRIPE if ri % 2 == 0 else _WHITE
         ws.row_dimensions[ri].height = 22
-        _cell(ws, ri, 1, b["name"],        bg=stripe, align=_RGT, bold=True)
-        _cell(ws, ri, 2, b["employee_id"], bg=stripe)
+        _cell(ws, ri, 1, manager_name,     bg=stripe, align=_CTR)
+        _cell(ws, ri, 2, b["employee_id"], bg=stripe, align=_CTR)
+        _cell(ws, ri, 3, b["name"],        bg=stripe, align=_RGT, bold=True)
         bg, fg = _bonus_color(b["total"])
-        _cell(ws, ri, 3, b["total"], bg=bg, fg=fg, bold=True, fmt="#,##0 ₪")
+        _cell(ws, ri, 4, b["total"], bg=bg, fg=fg, bold=True, fmt="#,##0 ₪")
 
     mgr_ri = len(bonus_data) + ds
     ws.row_dimensions[mgr_ri].height = 22
-    _cell(ws, mgr_ri, 1, manager_name, bg="E8F0FE", align=_RGT, bold=True)
-    _cell(ws, mgr_ri, 2, "מנהל מוקד",  bg="E8F0FE")
+    _cell(ws, mgr_ri, 1, "רבקה כהן",  bg="E8F0FE", align=_CTR)
+    _cell(ws, mgr_ri, 2, 92369,        bg="E8F0FE", align=_CTR)
+    _cell(ws, mgr_ri, 3, manager_name, bg="E8F0FE", align=_RGT, bold=True)
     mbg, mfg = _bonus_color(manager_bonus)
-    _cell(ws, mgr_ri, 3, manager_bonus, bg=mbg, fg=mfg, bold=True, fmt="#,##0 ₪")
+    _cell(ws, mgr_ri, 4, manager_bonus, bg=mbg, fg=mfg, bold=True, fmt="#,##0 ₪")
 
     _summary_row(ws, mgr_ri + 1, n, [
         (1, 'סה"כ לתשלום'),
-        (3, f"=SUM(C{ds}:C{mgr_ri})", "#,##0 ₪"),
+        (4, f"=SUM(D{ds}:D{mgr_ri})", "#,##0 ₪"),
     ])
-    _autofit(ws, {"A": 22, "B": 20, "C": 22})
+    _autofit(ws, {"A": 18, "B": 14, "C": 22, "D": 18})
     _print_setup(ws)
 
     # ── 2. פירוט בונוסים — 15 cols, phoenix @ 100 ₪ ─────────────────────────
