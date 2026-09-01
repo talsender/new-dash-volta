@@ -3,7 +3,8 @@
 import tempfile, os
 from modules.data_loader import parse_attendance, parse_voicenter, parse_feedback
 from modules.calculator import (calculate_work_hours, calculate_meetings_per_hour,
-                                 calculate_idle_pct, calculate_center_rate,
+                                 calculate_idle_pct, calculate_answer_rate,
+                                 calculate_center_rate,
                                  calculate_agent_bonus, calculate_manager_bonus)
 
 _HEB_MONTHS = {
@@ -97,6 +98,7 @@ def compute_month(att_file, vc_file, fb_file, manual, agents, settings, month_la
             "occupancy_pct": occ_pct, "idle_calls": inp["idle_calls"],
             "answered_calls": answered,
             "total_calls":    total_calls,
+            "answer_rate": calculate_answer_rate(answered, total_calls),
             "idle_pct": calculate_idle_pct(inp["idle_calls"], answered),
             "phoenix": inp["phoenix"],
             "feedback_score": _get_feedback(feedback_scores, agent["name"],
@@ -143,6 +145,8 @@ def build_snapshot(res, month_label):
     bonus_data = res["bonus_data"]
     billing    = res["billing"]
     n = len(kpi_data) or 1
+    total_answered = sum(k.get("answered_calls", 0) for k in kpi_data)
+    total_calls    = sum(k.get("total_calls", k.get("answered_calls", 0)) for k in kpi_data)
     return {
         "month":             res.get("month_key") or _label_to_month_key(month_label),
         "label":             month_label,
@@ -155,8 +159,9 @@ def build_snapshot(res, month_label):
         "total_hours":          billing["total_hours"],
         "total_phoenix":        billing["phoenix_count"],
         "total_idle_calls":     sum(k.get("idle_calls", 0) for k in kpi_data),
-        "total_answered_calls": sum(k.get("answered_calls", 0) for k in kpi_data),
-        "total_calls":          sum(k.get("total_calls", k.get("answered_calls", 0)) for k in kpi_data),
+        "total_answered_calls": total_answered,
+        "total_calls":          total_calls,
+        "answer_rate":          calculate_answer_rate(total_answered, total_calls),
         "avg_occupancy_pct":    sum(k["occupancy_pct"] for k in kpi_data) / n,
         "avg_idle_pct":         sum(k["idle_pct"] for k in kpi_data) / n,
         "total_agent_bonus":    sum(b["total"] for b in bonus_data),
@@ -168,6 +173,9 @@ def build_snapshot(res, month_label):
             "meetings_per_hour": k["meetings_per_hour"],
             "occupancy_pct":     k["occupancy_pct"],
             "idle_pct":          k["idle_pct"],
+            "answer_rate":       calculate_answer_rate(
+                k.get("answered_calls", 0),
+                k.get("total_calls", k.get("answered_calls", 0))),
             "feedback_score":    k["feedback_score"],
             "phoenix":           k["phoenix"],
             "bonus_total":       b["total"],

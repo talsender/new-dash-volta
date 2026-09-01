@@ -151,6 +151,53 @@ def test_build_snapshot_averages_multiple_agents():
     assert snap["total_agent_bonus"] == 2200
 
 
+def test_build_snapshot_answer_rate_is_weighted_by_call_volume():
+    """Center answer_rate must be total answered / total calls, not a mean of per-agent rates."""
+    from modules.month_calc import build_snapshot
+
+    res = {
+        "kpi_data": [
+            {"name": "א", "hours": 100, "meetings": 120, "meetings_per_hour": 1.2,
+             "occupancy_pct": 0.40, "idle_pct": 0.010, "feedback_score": 8.0, "phoenix": 3,
+             "answered_calls": 1066, "total_calls": 1240},
+            {"name": "ב", "hours": 100, "meetings": 110, "meetings_per_hour": 1.1,
+             "occupancy_pct": 0.60, "idle_pct": 0.006, "feedback_score": 9.0, "phoenix": 5,
+             "answered_calls": 668, "total_calls": 940},
+        ],
+        "bonus_data": [{"name": "א", "total": 1000}, {"name": "ב", "total": 1200}],
+        "center_rate": 1.15,
+        "center_meets": True,
+        "manager_bonus": 2000,
+        "billing": {"phoenix_billing": 40000, "total_hours": 200.0, "phoenix_count": 8},
+    }
+    snap = build_snapshot(res, "יולי 2026")
+
+    assert snap["answer_rate"] == pytest.approx((1066 + 668) / (1240 + 940))
+    assert snap["agents"][0]["answer_rate"] == pytest.approx(1066 / 1240)
+    assert snap["agents"][1]["answer_rate"] == pytest.approx(668 / 940)
+
+
+def test_build_snapshot_answer_rate_zero_when_no_calls():
+    """A month with no Voicenter data must yield 0.0, not a division error."""
+    from modules.month_calc import build_snapshot
+
+    res = {
+        "kpi_data": [{
+            "name": "א", "hours": 100, "meetings": 120, "meetings_per_hour": 1.2,
+            "occupancy_pct": 0.40, "idle_pct": 0.010, "feedback_score": 8.0, "phoenix": 3,
+        }],
+        "bonus_data": [{"name": "א", "total": 1000}],
+        "center_rate": 1.2,
+        "center_meets": True,
+        "manager_bonus": 2000,
+        "billing": {"phoenix_billing": 40000, "total_hours": 100.0, "phoenix_count": 3},
+    }
+    snap = build_snapshot(res, "יולי 2026")
+
+    assert snap["answer_rate"] == 0.0
+    assert snap["agents"][0]["answer_rate"] == 0.0
+
+
 # ── session cache tests ────────────────────────────────────────────────────
 
 def test_save_month_sets_session_cache():

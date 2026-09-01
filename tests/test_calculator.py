@@ -3,6 +3,7 @@ from modules.calculator import (
     calculate_work_hours,
     calculate_meetings_per_hour,
     calculate_idle_pct,
+    calculate_answer_rate,
     calculate_center_rate,
 )
 
@@ -60,6 +61,16 @@ def test_idle_pct_normal():
 
 def test_idle_pct_zero_answered():
     assert calculate_idle_pct(0, 0) == 0.0
+
+# ── Answer rate ──────────────────────────────────
+def test_answer_rate_normal():
+    assert calculate_answer_rate(1066, 1240) == pytest.approx(1066 / 1240, rel=0.01)
+
+def test_answer_rate_zero_total_calls():
+    assert calculate_answer_rate(0, 0) == 0.0
+
+def test_answer_rate_all_answered():
+    assert calculate_answer_rate(940, 940) == 1.0
 
 # ── Center rate ───────────────────────────────────────────
 def test_center_rate_combines_agents():

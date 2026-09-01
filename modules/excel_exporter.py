@@ -3,6 +3,7 @@ import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 from modules.config_manager import load_settings
+from modules.calculator import calculate_answer_rate
 from datetime import datetime
 
 # ── Palette ───────────────────────────────────────────────────────────────────
@@ -41,6 +42,13 @@ def _fill(color):
 
 def _font(color, bold=False, size=11):
     return Font(color=color, bold=bold, size=size, name="Calibri")
+
+def _answer_rate(kpi: dict) -> float:
+    """Answer rate of a KPI dict, recomputed from call counts when absent."""
+    if "answer_rate" in kpi:
+        return kpi["answer_rate"]
+    return calculate_answer_rate(kpi.get("answered_calls", 0), kpi.get("total_calls", 0))
+
 
 def _status_color(value, good_thr, warn_thr, higher_is_better=True):
     if higher_is_better:
@@ -104,6 +112,7 @@ def export_history_summary(history: list, path: str) -> None:
         ("תיאומים/שעה",   14, "#,##0.00"),
         ("שיחות סרק",     12, "#,##0"),
         ('סה"כ שיחות',    13, "#,##0"),
+        ("% מענה",        11, "0.0%"),
         ("פניקס",         10, "#,##0"),
     ]
 
@@ -153,6 +162,8 @@ def export_history_summary(history: list, path: str) -> None:
             _v("center_rate"),
             _v("total_idle_calls"),
             _v("total_calls", _v("total_answered_calls")),
+            # months saved before the metric existed have no rate to show
+            h["answer_rate"] if isinstance(h.get("answer_rate"), (int, float)) else "—",
             _v("total_phoenix"),
         ]
 
@@ -174,13 +185,22 @@ def export_history_summary(history: list, path: str) -> None:
     # ── Totals / averages row ──────────────────────────────────────────────
     if history:
         sum_row = HDR_ROW + 1 + len(history)
+        _hist_total_calls = sum(
+            h.get("total_calls", h.get("total_answered_calls", 0)) for h in history)
+        _rated = [h for h in history
+                  if isinstance(h.get("answer_rate"), (int, float))]
+        _rated_calls = sum(h.get("total_calls", 0) for h in _rated)
         numeric_cols = {
             2: sum(h.get("total_hours", 0) for h in history),
             3: sum(h.get("total_meetings", 0) for h in history),
             4: (sum(h.get("center_rate", 0) for h in history) / len(history)),
             5: sum(h.get("total_idle_calls", 0) for h in history),
-            6: sum(h.get("total_calls", h.get("total_answered_calls", 0)) for h in history),
-            7: sum(h.get("total_phoenix", 0) for h in history),
+            6: _hist_total_calls,
+            7: (calculate_answer_rate(
+                    sum(h["answer_rate"] * h.get("total_calls", 0) for h in _rated),
+                    _rated_calls)
+                if _rated else "—"),
+            8: sum(h.get("total_phoenix", 0) for h in history),
         }
         _summary_row(ws, sum_row, len(COLS), [
             (1, "סה\"כ / ממוצע"),
@@ -257,7 +277,7 @@ def export_weekly_kpi(kpi_data: list, filepath: str) -> None:
     ws.title = "KPI שבועי"
 
     COLS  = ["נציג", "שעות עבודה", "תיאומים", "תיאומים/שעה",
-             "תעסוקה %", "סרק %", "פניקס", 'סה"כ שיחות']
+             "תעסוקה %", "סרק %", "פניקס", 'סה"כ שיחות', "% מענה"]
     ncols = len(COLS)
     ds    = _init_sheet(ws, "דוח KPI שבועי", ncols,
                         meta=f"הופק: {now}  |  נציגים: {len(kpi_data)}",
@@ -286,11 +306,13 @@ def export_weekly_kpi(kpi_data: list, filepath: str) -> None:
 
         _cell(ws, ri, 7, a["phoenix"],                bg=stripe)
         _cell(ws, ri, 8, a.get("total_calls", a.get("answered_calls", 0)), bg=stripe)
+        _cell(ws, ri, 9, _answer_rate(a), bg=stripe, fmt="0.0%")
 
     n  = len(kpi_data)
     tm = sum(a["meetings"]               for a in kpi_data)
     th = sum(a["hours"]                  for a in kpi_data)
     ta = sum(a.get("total_calls", a.get("answered_calls", 0)) for a in kpi_data)
+    tans = sum(a.get("answered_calls", 0) for a in kpi_data)
     tp = sum(a["phoenix"]                for a in kpi_data)
     cmph     = round(tm / th, 2) if th else 0
     avg_occ  = sum(a["occupancy_pct"] for a in kpi_data) / n if n else 0
@@ -304,6 +326,7 @@ def export_weekly_kpi(kpi_data: list, filepath: str) -> None:
         (4, f"=C{sr}/B{sr}", "0.00"),
         (7, f"=SUM(G{ds}:G{sr-1})"),
         (8, f"=SUM(H{ds}:H{sr-1})"),
+        (9, calculate_answer_rate(tans, ta), "0.0%"),
     ])
     for col, col_letter, avg_val, fmt, bg, fg in [
         (5, "E", avg_occ,  "0.0%",  *_status_color(avg_occ,  occ_good,  occ_warn,  True)),
@@ -314,7 +337,7 @@ def export_weekly_kpi(kpi_data: list, filepath: str) -> None:
         c.border = _B_SUM; c.alignment = _CTR; c.number_format = fmt
 
     _autofit(ws, {"A": 22, "B": 16, "C": 14, "D": 16,
-                  "E": 14, "F": 14, "G": 12, "H": 16})
+                  "E": 14, "F": 14, "G": 12, "H": 16, "I": 12})
     _print_setup(ws)
     wb.save(filepath)
 
@@ -387,7 +410,7 @@ def export_monthly_bonus(bonus_data: list, billing: dict,
     COLS2 = [
         "שם נציג", "שעות", "תיאומים", "תיאומים/שעה",
         "עמלת תיאומים", "תעסוקה %", "בונוס תעסוקה",
-        "שיחות סרק", 'סה"כ שיחות', "% סרק", "בונוס סרק",
+        "שיחות סרק", 'סה"כ שיחות', "% מענה", "% סרק", "בונוס סרק",
         "ציון משוב", "בונוס משוב",
         f"עסקת פניקס ({ph_client_rate}₪)", "בונוס ליעד צוותי",
         'סה"כ',
@@ -406,6 +429,8 @@ def export_monthly_bonus(bonus_data: list, billing: dict,
     _sum_mtg_base   = 0.0
     _sum_occ_bonus  = 0.0
     _sum_idle_calls = 0
+    _sum_calls      = 0
+    _sum_answered   = 0
     _sum_idle_bonus = 0.0
     _sum_fb_bonus   = 0.0
     _sum_ph_val     = 0.0
@@ -438,6 +463,8 @@ def export_monthly_bonus(bonus_data: list, billing: dict,
         _sum_mtg_base   += mtg_base
         _sum_occ_bonus  += b["occupancy_bonus"]
         _sum_idle_calls += k.get("idle_calls", 0)
+        _sum_calls      += k.get("total_calls", k.get("answered_calls", 0))
+        _sum_answered   += k.get("answered_calls", 0)
         _sum_idle_bonus += b["idle_bonus"]
         _sum_fb_bonus   += b["feedback_bonus"]
         _sum_ph_val     += ph_val
@@ -463,17 +490,18 @@ def export_monthly_bonus(bonus_data: list, billing: dict,
         _bonus_cell(ws2, ri,  7, b["occupancy_bonus"], stripe)
         _cell(ws2, ri,  8, k.get("idle_calls", 0), bg=stripe)
         _cell(ws2, ri,  9, tc,                  bg=stripe, fmt="#,##0")
+        _cell(ws2, ri, 10, _answer_rate(k),     bg=stripe, fmt="0.0%")
         bg, fg = _status_color(idl, idle_good, idle_warn, False)
-        _cell(ws2, ri, 10, idl,                 bg=bg, fg=fg, fmt="0.00%")
-        _bonus_cell(ws2, ri, 11, b["idle_bonus"], stripe)
+        _cell(ws2, ri, 11, idl,                 bg=bg, fg=fg, fmt="0.00%")
+        _bonus_cell(ws2, ri, 12, b["idle_bonus"], stripe)
         fb_bg = _GOOD_BG if fs and fs >= 8.5 else _WARN_BG if fs and fs >= 8.0 else stripe
-        _cell(ws2, ri, 12, fs if fs is not None else "—",
+        _cell(ws2, ri, 13, fs if fs is not None else "—",
               bg=fb_bg, fmt="0.0" if fs else None)
-        _bonus_cell(ws2, ri, 13, b["feedback_bonus"], stripe)
-        _bonus_cell(ws2, ri, 14, ph_val,         stripe)
-        _bonus_cell(ws2, ri, 15, ctr_bonus,      stripe)
+        _bonus_cell(ws2, ri, 14, b["feedback_bonus"], stripe)
+        _bonus_cell(ws2, ri, 15, ph_val,         stripe)
+        _bonus_cell(ws2, ri, 16, ctr_bonus,      stripe)
         bg, fg = _bonus_color(row_total)
-        _cell(ws2, ri, 16, f"=E{ri}+G{ri}+K{ri}+M{ri}+N{ri}+O{ri}",
+        _cell(ws2, ri, 17, f"=E{ri}+G{ri}+L{ri}+N{ri}+O{ri}+P{ri}",
               bg=bg, fg=fg, bold=True, fmt="#,##0 ₪")
 
     _n2       = len(bonus_data) or 1
@@ -481,6 +509,7 @@ def export_monthly_bonus(bonus_data: list, billing: dict,
     _avg_idle = _sum_idle / _n2
     _avg_fb   = sum(_fb_scores) / len(_fb_scores) if _fb_scores else None
     _cmph     = _sum_mtg / _sum_hrs if _sum_hrs else 0
+    _center_answer_rate = calculate_answer_rate(_sum_answered, _sum_calls)
 
     sr2 = len(bonus_data) + ds2
     _summary_row(ws2, sr2, n2, [
@@ -493,18 +522,19 @@ def export_monthly_bonus(bonus_data: list, billing: dict,
         (7,  f"=SUM(G{ds2}:G{sr2-1})",      "#,##0 ₪"),
         (8,  f"=SUM(H{ds2}:H{sr2-1})"),
         (9,  f"=SUM(I{ds2}:I{sr2-1})"),
-        (10, f"=AVERAGE(J{ds2}:J{sr2-1})",  "0.00%"),
-        (11, f"=SUM(K{ds2}:K{sr2-1})",      "#,##0 ₪"),
-        (12, round(_avg_fb, 1) if _avg_fb is not None else "—",
+        (10, _center_answer_rate,           "0.0%"),
+        (11, f"=AVERAGE(K{ds2}:K{sr2-1})",  "0.00%"),
+        (12, f"=SUM(L{ds2}:L{sr2-1})",      "#,##0 ₪"),
+        (13, round(_avg_fb, 1) if _avg_fb is not None else "—",
              "0.0" if _avg_fb is not None else None),
-        (13, f"=SUM(M{ds2}:M{sr2-1})",      "#,##0 ₪"),
         (14, f"=SUM(N{ds2}:N{sr2-1})",      "#,##0 ₪"),
         (15, f"=SUM(O{ds2}:O{sr2-1})",      "#,##0 ₪"),
         (16, f"=SUM(P{ds2}:P{sr2-1})",      "#,##0 ₪"),
+        (17, f"=SUM(Q{ds2}:Q{sr2-1})",      "#,##0 ₪"),
     ])
     _autofit(ws2, {"A": 20, "B": 10, "C": 12, "D": 14, "E": 16,
-                   "F": 12, "G": 16, "H": 14, "I": 14, "J": 10, "K": 14,
-                   "L": 12, "M": 14, "N": 18, "O": 18, "P": 14})
+                   "F": 12, "G": 16, "H": 14, "I": 14, "J": 12, "K": 10,
+                   "L": 14, "M": 12, "N": 14, "O": 18, "P": 18, "Q": 14})
     _print_setup(ws2)
 
     # ── 3. סיכום מוקד ────────────────────────────────────────────────────────
@@ -520,6 +550,8 @@ def export_monthly_bonus(bonus_data: list, billing: dict,
         th       = sum(k["hours"]         for k in kpi_data)
         tph      = sum(k["phoenix"]       for k in kpi_data)
         tc_total = sum(k.get("total_calls", k.get("answered_calls", 0)) for k in kpi_data)
+        ans_total = calculate_answer_rate(
+            sum(k.get("answered_calls", 0) for k in kpi_data), tc_total)
         ao  = sum(k["occupancy_pct"] for k in kpi_data) / len(kpi_data)
         ai  = sum(k["idle_pct"]      for k in kpi_data) / len(kpi_data)
         cmph = tm / th if th else 0
@@ -531,6 +563,7 @@ def export_monthly_bonus(bonus_data: list, billing: dict,
             ("ממוצע סרק",               f"{ai*100:.2f}%",     f"≤{idle_good*100:.0f}%", ai <= idle_good),
             ('סה"כ פניקס (עסקאות)',    tph,                   "—",               None),
             ('סה"כ שיחות',             tc_total,              "—",               None),
+            ("אחוז מענה",               f"{ans_total*100:.1f}%", "—",              None),
         ]
     summary_rows += [
         ('סה"כ בונוסים נציגים (₪)',           agents_total,  "—", None),
@@ -611,10 +644,12 @@ def _populate_agent_sheet(ws, kpi: dict, bonus: dict,
     r_ctr    = ds + 4   # בונוס ליעד צוותי
     r_occ    = ds + 5   # אחוז תעסוקה
     r_idlc   = ds + 6   # שיחות סרק
-    r_totc   = ds + 7   # סה"כ שיחות
-    r_idl    = ds + 8   # אחוז סרק
-    r_fb     = ds + 9   # ציון משוב
-    r_ph     = ds + 10  # עסקת פניקס
+    r_ans    = ds + 7   # שיחות שנענו
+    r_totc   = ds + 8   # סה"כ שיחות
+    r_ansr   = ds + 9   # אחוז מענה
+    r_idl    = ds + 10  # אחוז סרק
+    r_fb     = ds + 11  # ציון משוב
+    r_ph     = ds + 12  # עסקת פניקס
 
     rows = [
         (r_hrs,  "שעות עבודה",
@@ -653,8 +688,16 @@ def _populate_agent_sheet(ws, kpi: dict, bonus: dict,
          kpi.get("idle_calls", 0), None,
          "—", None, None, "—"),
 
+        (r_ans,  "שיחות שנענו",
+         kpi.get("answered_calls", 0), None,
+         "—", None, None, "—"),
+
         (r_totc, 'סה"כ שיחות',
          kpi.get("total_calls", kpi.get("answered_calls", 0)), None,
+         "—", None, None, "—"),
+
+        (r_ansr, "אחוז מענה",
+         f"=IF(B{r_totc}=0,0,B{r_ans}/B{r_totc})", "0.0%",
          "—", None, None, "—"),
 
         (r_idl,  "אחוז סרק",

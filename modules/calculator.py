@@ -16,6 +16,10 @@ def calculate_idle_pct(idle_calls: int, answered_calls: int) -> float:
     return 0.0 if answered_calls == 0 else idle_calls / answered_calls
 
 
+def calculate_answer_rate(answered_calls: int, total_calls: int) -> float:
+    return 0.0 if total_calls == 0 else answered_calls / total_calls
+
+
 def calculate_center_rate(agents: list) -> float:
     active = [a for a in agents if a["hours"] > 0]
     if not active:
