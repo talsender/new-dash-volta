@@ -4,38 +4,61 @@ from modules.config_manager import load_agents, save_agents
 from modules import ui
 
 
+def _partition_agents(agents):
+    """Split into (active, inactive) as (index, agent) pairs.
+
+    The index is the position in the original list — the delete button pops by it.
+    """
+    pairs    = list(enumerate(agents))
+    active   = [(i, a) for i, a in pairs if a.get("active", True)]
+    inactive = [(i, a) for i, a in pairs if not a.get("active", True)]
+    return active, inactive
+
+
+def _agent_row(agents, i, agent):
+    """Render one editable row; edits mutate agents[i] in place."""
+    with st.container():
+        c1, c2, c3, c4, c5, c6, c7 = st.columns([2, 1.5, 2, 1.5, 2, 1, 1])
+        with c1:
+            agents[i]["name"] = st.text_input("שם עברי", agent["name"], key=f"n_{i}")
+        with c2:
+            agents[i]["employee_id"] = int(st.number_input(
+                "מ. עובד", value=agent["employee_id"], step=1, key=f"e_{i}"))
+        with c3:
+            agents[i]["voicenter_name"] = st.text_input(
+                "שם ב-Voicenter", agent.get("voicenter_name", ""), key=f"vc_{i}",
+                help="השם כפי שמופיע בדוח Voicenter")
+        with c4:
+            agents[i]["feedback_name"] = st.text_input(
+                "שם בקובץ משובים", agent.get("feedback_name", ""), key=f"fb_{i}",
+                help="שם הלשונית בקובץ המשובים (בדיוק כפי שכתוב)")
+        with c5:
+            agents[i]["email"] = st.text_input("מייל", agent.get("email", ""), key=f"m_{i}")
+        with c6:
+            agents[i]["active"] = st.checkbox("פעיל", agent.get("active", True), key=f"a_{i}")
+        with c7:
+            st.markdown("<br>", unsafe_allow_html=True)
+            if st.button("🗑️", key=f"d_{i}"):
+                agents.pop(i)
+                save_agents(agents)
+                st.rerun()
+
+
 def render():
     ui.page_header("ניהול נציגים", icon="👥", subtitle="הוספה, עריכה והסרה של נציגים")
 
     agents = load_agents()
+    active, inactive = _partition_agents(agents)
 
     ui.section_header("נציגים קיימים")
-    for i, agent in enumerate(agents):
-        with st.container():
-            c1, c2, c3, c4, c5, c6, c7 = st.columns([2, 1.5, 2, 1.5, 2, 1, 1])
-            with c1:
-                agents[i]["name"] = st.text_input("שם עברי", agent["name"], key=f"n_{i}")
-            with c2:
-                agents[i]["employee_id"] = int(st.number_input(
-                    "מ. עובד", value=agent["employee_id"], step=1, key=f"e_{i}"))
-            with c3:
-                agents[i]["voicenter_name"] = st.text_input(
-                    "שם ב-Voicenter", agent.get("voicenter_name", ""), key=f"vc_{i}",
-                    help="השם כפי שמופיע בדוח Voicenter")
-            with c4:
-                agents[i]["feedback_name"] = st.text_input(
-                    "שם בקובץ משובים", agent.get("feedback_name", ""), key=f"fb_{i}",
-                    help="שם הלשונית בקובץ המשובים (בדיוק כפי שכתוב)")
-            with c5:
-                agents[i]["email"] = st.text_input("מייל", agent.get("email", ""), key=f"m_{i}")
-            with c6:
-                agents[i]["active"] = st.checkbox("פעיל", agent.get("active", True), key=f"a_{i}")
-            with c7:
-                st.markdown("<br>", unsafe_allow_html=True)
-                if st.button("🗑️", key=f"d_{i}"):
-                    agents.pop(i)
-                    save_agents(agents)
-                    st.rerun()
+    for i, agent in active:
+        _agent_row(agents, i, agent)
+
+    if inactive:
+        with st.expander(f"נציגים לא פעילים ({len(inactive)})"):
+            st.caption("לא נכללים בדוחות. סמן \"פעיל\" ושמור כדי להחזיר נציג.")
+            for i, agent in inactive:
+                _agent_row(agents, i, agent)
 
     if st.button("שמור שינויים"):
         save_agents(agents)
