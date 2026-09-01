@@ -1,5 +1,80 @@
 [
   {
+    "month": "אוגוסט 2026",
+    "label": "אוגוסט 2026",
+    "center_rate": 1.2957019257605358,
+    "center_met_target": true,
+    "manager_bonus": 2000,
+    "total_billing": 800,
+    "total_meetings": 619,
+    "total_hours": 477.73333333333335,
+    "total_phoenix": 8,
+    "total_idle_calls": 3,
+    "total_answered_calls": 1957,
+    "total_calls": 3433,
+    "avg_occupancy_pct": 0.562,
+    "avg_idle_pct": 0.001431526347047861,
+    "total_agent_bonus": 6664,
+    "agents": [
+      {
+        "name": "דיוד זיו",
+        "hours": 165.91666666666663,
+        "meetings": 221,
+        "meetings_per_hour": 1.331993972877951,
+        "occupancy_pct": 0.65,
+        "idle_pct": 0.001976284584980237,
+        "feedback_score": 8.857142857142856,
+        "phoenix": 4,
+        "bonus_total": 2126
+      },
+      {
+        "name": "אלינור אדזיאשוילי",
+        "hours": 128.98333333333335,
+        "meetings": 154,
+        "meetings_per_hour": 1.1939527070680964,
+        "occupancy_pct": 0.8,
+        "idle_pct": 0.0,
+        "feedback_score": 8.666666666666666,
+        "phoenix": 2,
+        "bonus_total": 1624
+      },
+      {
+        "name": "טום סורסקי",
+        "hours": 0.0,
+        "meetings": 0,
+        "meetings_per_hour": 0.0,
+        "occupancy_pct": 0.0,
+        "idle_pct": 0.0,
+        "feedback_score": null,
+        "phoenix": 0,
+        "bonus_total": 150
+      },
+      {
+        "name": "פרי יבדייב",
+        "hours": 42.06666666666666,
+        "meetings": 60,
+        "meetings_per_hour": 1.4263074484944533,
+        "occupancy_pct": 0.38,
+        "idle_pct": 0.0,
+        "feedback_score": 8.69047619047619,
+        "phoenix": 0,
+        "bonus_total": 960
+      },
+      {
+        "name": "מעיין מנשירוב",
+        "hours": 140.76666666666668,
+        "meetings": 184,
+        "meetings_per_hour": 1.3071276343831397,
+        "occupancy_pct": 0.98,
+        "idle_pct": 0.0051813471502590676,
+        "feedback_score": 8.547619047619047,
+        "phoenix": 2,
+        "bonus_total": 1804
+      }
+    ],
+    "saved_at": "2026-09-01T07:29:03.430758"
+  },
+  {
     "month": "יוני 2026",
     "label": "יוני 2026",
     "center_rate": 0.908568429995752,
