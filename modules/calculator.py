@@ -8,14 +8,25 @@ def calculate_work_hours(attendance_df: pd.DataFrame, employee_id: int) -> float
     return max(0.0, float(working['סה"כ כללי'].sum()) - len(full_days))
 
 
-def count_work_days(attendance_df: pd.DataFrame, employee_id: int) -> int:
-    """Days the employee actually clocked in, within whatever the report covers."""
-    emp = attendance_df[attendance_df['מספר עובד'] == employee_id]
-    return int((emp['סה"כ כללי'] > 0).sum())
+def employee_attendance_range(attendance_df: pd.DataFrame, employee_id: int):
+    """(first, last) dates the employee clocked in — evidence of when they
+    entered or left the role, for the hint beside the role-period input.
+
+    Returns (None, None) when the employee is absent from the report or the
+    file carries no date column.
+    """
+    if 'תאריך' not in attendance_df.columns:
+        return None, None
+    emp = attendance_df[(attendance_df['מספר עובד'] == employee_id)
+                        & (attendance_df['סה"כ כללי'] > 0)]
+    dates = pd.to_datetime(emp['תאריך'], errors='coerce').dropna()
+    if dates.empty:
+        return None, None
+    return dates.min(), dates.max()
 
 
 def attendance_coverage(attendance_df: pd.DataFrame):
-    """(first_date, last_date, distinct_days) of the report, for the work-days hint.
+    """(first_date, last_date, distinct_days) of the report, for the role-period hint.
 
     Returns (None, None, 0) when the file carries no date column, so callers
     can tell "no coverage known" from a genuine one-day report.
@@ -41,15 +52,17 @@ def calculate_answer_rate(answered_calls: int, total_calls: int) -> float:
     return 0.0 if total_calls == 0 else answered_calls / total_calls
 
 
-def calculate_work_days_factor(days_worked: float, full_month_days: float) -> float:
-    """Share of the month actually worked, capped at 1.0.
+def calculate_role_factor(days_in_role: float, days_in_month: float) -> float:
+    """Share of the month the agent held the role, capped at 1.0.
 
-    A full_month_days of 0 means we were not told the month length, so assume
-    a full month rather than silently zeroing someone's bonus.
+    Time in the role, not days attended — someone there all month keeps the
+    full bonus after a sick day. A days_in_month of 0 means we were not told
+    the month length, so assume a full month rather than silently zeroing
+    someone's bonus.
     """
-    if full_month_days <= 0:
+    if days_in_month <= 0:
         return 1.0
-    return min(1.0, days_worked / full_month_days)
+    return min(1.0, days_in_role / days_in_month)
 
 
 def calculate_center_rate(agents: list) -> float:

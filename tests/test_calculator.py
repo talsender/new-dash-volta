@@ -4,8 +4,6 @@ from modules.calculator import (
     calculate_meetings_per_hour,
     calculate_idle_pct,
     calculate_answer_rate,
-    calculate_work_days_factor,
-    count_work_days,
     attendance_coverage,
     calculate_center_rate,
 )
@@ -74,23 +72,6 @@ def test_answer_rate_zero_total_calls():
 
 def test_answer_rate_all_answered():
     assert calculate_answer_rate(940, 940) == 1.0
-
-# ── Work-days factor ──────────────────────────────
-def test_work_days_factor_half_month():
-    assert calculate_work_days_factor(11, 22) == pytest.approx(0.5)
-
-def test_work_days_factor_full_month_is_one():
-    assert calculate_work_days_factor(22, 22) == 1.0
-
-def test_work_days_factor_caps_at_one():
-    """More days than the month holds must not pay more than 100%."""
-    assert calculate_work_days_factor(25, 22) == 1.0
-
-def test_work_days_factor_zero_days_worked():
-    assert calculate_work_days_factor(0, 22) == 0.0
-
-def test_work_days_factor_unknown_month_length_assumes_full():
-    assert calculate_work_days_factor(11, 0) == 1.0
 
 # ── Center rate ───────────────────────────────────────────
 def test_center_rate_combines_agents():
@@ -245,21 +226,6 @@ def test_agent_bonus_center_target_bonus_zero_when_center_misses():
 
 
 # ── Work days detected from the attendance file ────────────────
-
-def test_count_work_days_ignores_days_with_no_hours():
-    df = _df([
-        {'מספר עובד': 96186, 'סה"כ כללי': 8.0},
-        {'מספר עובד': 96186, 'סה"כ כללי': 0.0},
-        {'מספר עובד': 96186, 'סה"כ כללי': 7.5},
-        {'מספר עובד': 98752, 'סה"כ כללי': 8.0},
-    ])
-    assert count_work_days(df, 96186) == 2
-
-
-def test_count_work_days_unknown_employee_is_zero():
-    df = _df([{'מספר עובד': 96186, 'סה"כ כללי': 8.0}])
-    assert count_work_days(df, 99999) == 0
-
 
 def test_attendance_coverage_reports_distinct_dates_and_range():
     df = _df([

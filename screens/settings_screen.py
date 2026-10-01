@@ -22,9 +22,6 @@ def render():
     with c2:
         t["feedback_tier_a_score"] = st.number_input("ציון משוב A", value=float(t["feedback_tier_a_score"]), step=0.1)
         t["feedback_tier_b_score"] = st.number_input("ציון משוב B", value=float(t["feedback_tier_b_score"]), step=0.1)
-        t["full_work_days_per_month"] = int(st.number_input(
-            "ימי עבודה בחודש", value=int(t.get("full_work_days_per_month", 22)), step=1,
-            help="המכנה לחלוקה היחסית של בונוס תעסוקה, סרק ומשוב"))
         t["phoenix_employee_rate"] = st.number_input("פניקס לנציג ₪", value=int(t["phoenix_employee_rate"]))
         t["phoenix_client_rate"]   = st.number_input("פניקס ללקוח ₪", value=int(t["phoenix_client_rate"]))
         t["manager_bonus_a"]       = st.number_input("בונוס מנהל A ₪", value=int(t["manager_bonus_a"]))

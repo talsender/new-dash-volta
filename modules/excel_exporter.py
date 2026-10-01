@@ -4,6 +4,7 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 from modules.config_manager import load_settings
 from modules.calculator import calculate_answer_rate
+from modules.month_calc import days_in_month
 from datetime import datetime
 
 # ── Palette ───────────────────────────────────────────────────────────────────
@@ -48,6 +49,18 @@ def _answer_rate(kpi: dict) -> float:
     if "answer_rate" in kpi:
         return kpi["answer_rate"]
     return calculate_answer_rate(kpi.get("answered_calls", 0), kpi.get("total_calls", 0))
+
+
+def _role_period_label(kpi: dict, month_days: int) -> str:
+    """'12/09–30/09' when the agent entered or left mid-month, else the whole month."""
+    start, end = kpi.get("role_start"), kpi.get("role_end")
+    if not start and not end:
+        return f"כל החודש ({month_days} ימים)"
+    if start and end:
+        return f"{start.strftime('%d/%m')}–{end.strftime('%d/%m')}"
+    if start:
+        return f"מ-{start.strftime('%d/%m')}"
+    return f"עד {end.strftime('%d/%m')}"
 
 
 def _status_color(value, good_thr, warn_thr, higher_is_better=True):
@@ -357,7 +370,7 @@ def export_monthly_bonus(bonus_data: list, billing: dict,
     idle_good      = s["idle_tier_a_pct"] / 100
     idle_warn      = s["idle_tier_b_pct"] / 100
     mph_good       = s["meetings_per_hour_tier_a"]
-    full_days      = s.get("full_work_days_per_month", 22)
+    month_days     = days_in_month(month_label)
     mph_warn       = mph_good * 0.75
     rate_a         = s["meetings_per_hour_tier_a_rate"]   # 5 ₪
     rate_b         = s["meetings_per_hour_tier_b_rate"]   # 4 ₪
@@ -410,7 +423,7 @@ def export_monthly_bonus(bonus_data: list, billing: dict,
     ws2 = wb.create_sheet("פירוט בונוסים")
     COLS2 = [
         "שם נציג", "שעות",
-        "ימי עבודה", "תיאומים", "תיאומים/שעה",
+        "ימים בתפקיד", "תיאומים", "תיאומים/שעה",
         "עמלת תיאומים", "תעסוקה %", "בונוס תעסוקה",
         "שיחות סרק", 'סה"כ שיחות', "% מענה", "% סרק", "בונוס סרק",
         "ציון משוב", "בונוס משוב",
@@ -478,7 +491,7 @@ def export_monthly_bonus(bonus_data: list, billing: dict,
 
         tc = k.get("total_calls", k.get("answered_calls", 0))
 
-        wd = b.get("work_days", k.get("work_days", full_days))
+        wd = b.get("role_days", k.get("role_days", month_days))
 
         _cell(ws2, ri,  1, b["name"],          bg=stripe, align=_RGT, bold=True)
         _cell(ws2, ri,  2, hrs,                 bg=stripe, fmt="0.0")
@@ -633,10 +646,10 @@ def _populate_agent_sheet(ws, kpi: dict, bonus: dict,
     idl      = kpi.get("idle_pct", 0)
     fs       = kpi.get("feedback_score")
     ph_count = kpi.get("phoenix", 0)
-    full_days = s.get("full_work_days_per_month", 22)
-    work_days = kpi.get("work_days", full_days)
+    month_days = days_in_month(month_label)
+    role_days  = kpi.get("role_days", month_days)
     # live Excel proration — editing the days cell moves the fixed bonuses with it
-    wd_mult  = f"*MIN(1,B{{}}/{full_days})"
+    wd_mult  = f"*MIN(1,B{{}}/{month_days})"
     base_r   = rate_a if mph >= mph_good else rate_b
     ctr_b    = meetings * center_rate if center_meets else 0
 
@@ -648,7 +661,7 @@ def _populate_agent_sheet(ws, kpi: dict, bonus: dict,
 
     # Pre-compute row indices for formula cross-references
     r_hrs    = ds        # שעות עבודה
-    r_wd     = ds + 1   # ימי עבודה
+    r_wd     = ds + 1   # ימים בתפקיד
     r_mtg    = ds + 2   # תיאומים
     r_mph    = ds + 3   # תיאומים לשעה
     r_mtgb   = ds + 4   # עמלת תיאומים
@@ -667,9 +680,9 @@ def _populate_agent_sheet(ws, kpi: dict, bonus: dict,
          round(kpi.get("hours", 0), 1), "0.0",
          "—", None, None, "—"),
 
-        (r_wd,   "ימי עבודה",
-         work_days, None,
-         f"מתוך {full_days}", None, None, "—"),
+        (r_wd,   "ימים בתפקיד",
+         role_days, None,
+         _role_period_label(kpi, month_days), None, None, "—"),
 
         (r_mtg,  "תיאומים",
          meetings, None,

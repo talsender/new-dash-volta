@@ -198,8 +198,33 @@ def test_build_snapshot_answer_rate_zero_when_no_calls():
     assert snap["agents"][0]["answer_rate"] == 0.0
 
 
-def test_build_snapshot_stores_work_days_and_factor():
+def test_build_snapshot_stores_the_role_period():
     """A past month must be explainable — keep the days and the factor used."""
+    from modules.month_calc import build_snapshot
+
+    res = {
+        "kpi_data": [{
+            "name": "א", "hours": 94.0, "meetings": 99, "meetings_per_hour": 1.05,
+            "occupancy_pct": 0.361, "idle_pct": 0.0209, "feedback_score": 8.2,
+            "phoenix": 2, "role_days": 15, "role_factor": 0.5,
+        }],
+        "bonus_data": [{"name": "א", "total": 944}],
+        "center_rate": 1.05,
+        "center_meets": True,
+        "manager_bonus": 2000,
+        "days_in_month": 30,
+        "billing": {"phoenix_billing": 40000, "total_hours": 94.0, "phoenix_count": 2},
+    }
+    snap = build_snapshot(res, "ספטמבר 2026")
+
+    assert snap["days_in_month"] == 30
+    agent = snap["agents"][0]
+    assert agent["role_days"] == 15
+    assert agent["role_factor"] == pytest.approx(0.5)
+
+
+def test_build_snapshot_reads_results_saved_before_the_rename():
+    """Months computed as 'work days' must still read back, under the new names."""
     from modules.month_calc import build_snapshot
 
     res = {
@@ -217,14 +242,13 @@ def test_build_snapshot_stores_work_days_and_factor():
     }
     snap = build_snapshot(res, "ספטמבר 2026")
 
-    assert snap["full_month_days"] == 22
-    agent = snap["agents"][0]
-    assert agent["work_days"] == 11
-    assert agent["work_days_factor"] == pytest.approx(0.5)
+    assert snap["days_in_month"] == 22
+    assert snap["agents"][0]["role_days"] == 11
+    assert snap["agents"][0]["role_factor"] == pytest.approx(0.5)
 
 
-def test_build_snapshot_work_days_defaults_to_a_full_month():
-    """Months computed before this field existed must read back as full months."""
+def test_build_snapshot_role_factor_defaults_to_a_full_month():
+    """Months computed before any of this existed must read back as full months."""
     from modules.month_calc import build_snapshot
 
     res = {
@@ -240,7 +264,7 @@ def test_build_snapshot_work_days_defaults_to_a_full_month():
     }
     snap = build_snapshot(res, "ספטמבר 2026")
 
-    assert snap["agents"][0]["work_days_factor"] == 1.0
+    assert snap["agents"][0]["role_factor"] == 1.0
 
 
 # ── missing-source-data warning ──────────────────────────

@@ -1,10 +1,10 @@
 # modules/month_calc.py
 """Shared monthly KPI/bonus computation used by monthly_bonus and history screens."""
-import tempfile, os
+import tempfile, os, calendar, datetime as dt
 from modules.data_loader import parse_attendance, parse_voicenter, parse_feedback
 from modules.calculator import (calculate_work_hours, calculate_meetings_per_hour,
                                  calculate_idle_pct, calculate_answer_rate,
-                                 calculate_work_days_factor,
+                                 calculate_role_factor,
                                  calculate_center_rate,
                                  calculate_agent_bonus, calculate_manager_bonus)
 
@@ -56,6 +56,39 @@ def _get_feedback(scores: dict, agent_name: str, feedback_name: str = None):
     return entry.get('score') if isinstance(entry, dict) else entry
 
 
+def days_in_month(month_label: str) -> int:
+    """Calendar days in the month the label names, falling back to 30."""
+    try:
+        year, month = (int(v) for v in _label_to_month_key(month_label).split("-"))
+        return calendar.monthrange(year, month)[1]
+    except (ValueError, TypeError):
+        return 30
+
+
+def _month_bounds(month_label: str):
+    """(first, last) dates of the month, or None when the label is unreadable."""
+    try:
+        year, month = (int(v) for v in _label_to_month_key(month_label).split("-"))
+    except (ValueError, TypeError):
+        return None, None
+    return dt.date(year, month, 1), dt.date(year, month, days_in_month(month_label))
+
+
+def count_role_days(month_label: str, start=None, end=None) -> int:
+    """Calendar days the agent held the role inside this month, both ends included.
+
+    A range reaching outside the month is clipped to it, so someone employed
+    since last year is in the role for the whole month and no more. An empty
+    or inverted range is zero.
+    """
+    first, last = _month_bounds(month_label)
+    if first is None:
+        return days_in_month(month_label)
+    begin = max(start, first) if start else first
+    finish = min(end, last) if end else last
+    return max(0, (finish - begin).days + 1)
+
+
 def agents_missing_data(kpi_data: list) -> list:
     """[(name, ["Voicenter", ...]), ...] for agents whose source reports held nothing.
 
@@ -76,14 +109,14 @@ def agents_missing_data(kpi_data: list) -> list:
 
 
 def compute_month(att_file, vc_file, fb_file, manual, agents, settings, month_label,
-                  month_key=None, full_month_days=None):
+                  month_key=None):
     """Parse uploaded files and compute all KPI/bonus data.
 
     Raises on parse failure — caller should catch and display the error.
     Returns a results dict.
     """
     t = settings["bonus_thresholds"]
-    full_days = full_month_days or t.get("full_work_days_per_month", 22)
+    month_days = days_in_month(month_label)
 
     att_path = _save_upload(att_file, '.xlsx')
     vc_path  = _save_upload(vc_file, '.xls')
@@ -112,14 +145,17 @@ def compute_month(att_file, vc_file, fb_file, manual, agents, settings, month_la
         answered    = int(vc_row['נענו'].iloc[0])              if len(vc_row) else 0
         total_calls = int(vc_row['כניסות'].iloc[0])           if len(vc_row) else 0
         occ_pct     = float(vc_row['אחוז תעסוקה נטו'].iloc[0]) if len(vc_row) else 0.0
-        # untouched input means a full month — never prorate what was not asked for
         has_vc      = bool(len(vc_row))
-        work_days   = inp.get("work_days", full_days)
-        wd_factor   = calculate_work_days_factor(work_days, full_days)
+        # untouched dates mean the whole month — never prorate what was not asked for
+        role_start  = inp.get("role_start")
+        role_end    = inp.get("role_end")
+        role_days   = count_role_days(month_label, role_start, role_end)
+        role_factor = calculate_role_factor(role_days, month_days)
         kpi_data.append({
             "agent_id": agent["id"], "name": agent["name"],
             "employee_id": agent["employee_id"], "email": agent.get("email", ""),
-            "work_days": work_days, "work_days_factor": wd_factor,
+            "role_days": role_days, "role_factor": role_factor,
+            "role_start": role_start, "role_end": role_end,
             "has_vc_data": has_vc, "has_attendance": hours > 0,
             "hours": hours, "meetings": inp["meetings"],
             "meetings_per_hour": calculate_meetings_per_hour(inp["meetings"], hours),
@@ -144,9 +180,9 @@ def compute_month(att_file, vc_file, fb_file, manual, agents, settings, month_la
                   "occupancy_pct": k["occupancy_pct"], "idle_pct": k["idle_pct"],
                   "feedback_score": k["feedback_score"], "phoenix": k["phoenix"]}
         b = calculate_agent_bonus(kpi_in, center_meets, settings,
-                                  work_days_factor=k.get("work_days_factor", 1.0))
+                                  work_days_factor=k.get("role_factor", 1.0))
         bonus_data.append({"name": k["name"], "employee_id": k["employee_id"],
-                           "work_days": k.get("work_days", full_days), **b})
+                           "role_days": k.get("role_days", month_days), **b})
 
     manager_bonus = calculate_manager_bonus(center_rate, settings)
     total_phoenix = sum(k["phoenix"] for k in kpi_data)
@@ -164,7 +200,7 @@ def compute_month(att_file, vc_file, fb_file, manual, agents, settings, month_la
         "center_meets":  center_meets,
         "manager_bonus": manager_bonus,
         "billing":       billing,
-        "full_month_days": full_days,
+        "days_in_month": month_days,
         "month_label": month_label,
         "month_key":   (month_key or month_label).strip(),
     }
@@ -176,7 +212,7 @@ def build_snapshot(res, month_label):
     bonus_data = res["bonus_data"]
     billing    = res["billing"]
     n = len(kpi_data) or 1
-    full_days = res.get("full_month_days", 22)
+    month_days = res.get("days_in_month", res.get("full_month_days", 30))
     total_answered = sum(k.get("answered_calls", 0) for k in kpi_data)
     total_calls    = sum(k.get("total_calls", k.get("answered_calls", 0)) for k in kpi_data)
     return {
@@ -197,7 +233,7 @@ def build_snapshot(res, month_label):
         "avg_occupancy_pct":    sum(k["occupancy_pct"] for k in kpi_data) / n,
         "avg_idle_pct":         sum(k["idle_pct"] for k in kpi_data) / n,
         "total_agent_bonus":    sum(b["total"] for b in bonus_data),
-        "full_month_days":      full_days,
+        "days_in_month":        month_days,
         # Per-agent breakdown
         "agents": [{
             "name":              k["name"],
@@ -206,8 +242,8 @@ def build_snapshot(res, month_label):
             "meetings_per_hour": k["meetings_per_hour"],
             "occupancy_pct":     k["occupancy_pct"],
             "idle_pct":          k["idle_pct"],
-            "work_days":         k.get("work_days", full_days),
-            "work_days_factor":  k.get("work_days_factor", 1.0),
+            "role_days":         k.get("role_days", k.get("work_days", month_days)),
+            "role_factor":       k.get("role_factor", k.get("work_days_factor", 1.0)),
             "answer_rate":       calculate_answer_rate(
                 k.get("answered_calls", 0),
                 k.get("total_calls", k.get("answered_calls", 0))),

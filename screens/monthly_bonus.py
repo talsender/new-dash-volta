@@ -1,13 +1,14 @@
 # screens/monthly_bonus.py
 import streamlit as st
 import tempfile, os
-from modules.month_calc import compute_month, build_snapshot, agents_missing_data
+from modules.month_calc import (compute_month, build_snapshot, agents_missing_data,
+                                days_in_month, _month_bounds)
 from modules.config_manager import load_agents, load_settings
 from modules.email_builder import (build_monthly_client_email, build_monthly_agent_email)
 from modules.email_sender import send_email
 from modules.excel_exporter import export_monthly_bonus, export_agent_bonus
 from modules.history_manager import save_month
-from modules.calculator import count_work_days, attendance_coverage
+from modules.calculator import employee_attendance_range
 from modules.data_loader import parse_attendance
 from modules import ui
 
@@ -39,26 +40,24 @@ def _do_save_and_navigate(res, month_label):
     st.rerun()
 
 
-def _detected_work_days(att_file, agents):
-    """{employee_id: days} plus a coverage label, read from the attendance file.
+def _attendance_hints(att_file, agents):
+    """{employee_id: (first, last)} — when the attendance file first and last
+    sees each agent, which is the best evidence of entering or leaving the role.
 
-    Only a hint shown next to the input — the file may cover a partial period,
-    so it must never drive the calculation on its own. Returns ({}, "") when
-    the file cannot be read, so a bad upload never blocks the screen.
+    A hint only: the file may cover a partial period, so it never drives the
+    calculation. Returns {} when the file cannot be read, so a bad upload
+    never blocks the screen.
     """
     if not att_file:
-        return {}, ""
+        return {}
     try:
         att_file.seek(0)
         df = parse_attendance(att_file)
         att_file.seek(0)          # compute_month reads the same handle afterwards
-        first, last, days = attendance_coverage(df)
-        label = ""
-        if first is not None:
-            label = f"{days} ימים בטווח {first.strftime('%d/%m')}–{last.strftime('%d/%m')}"
-        return {a["employee_id"]: count_work_days(df, a["employee_id"]) for a in agents}, label
+        return {a["employee_id"]: employee_attendance_range(df, a["employee_id"])
+                for a in agents}
     except Exception:
-        return {}, ""
+        return {}
 
 
 def render():
@@ -77,14 +76,13 @@ def render():
 
     # ── Step 2: manual input ─────────────────────────────────────────────────
     ui.section_header("הזנה ידנית", step=2)
-    c_lbl, c_days = st.columns([2, 1])
-    month_label = c_lbl.text_input("חודש", "יוני 2026")
-    full_days = int(c_days.number_input(
-        "ימי עבודה בחודש", min_value=1, step=1,
-        value=int(settings["bonus_thresholds"].get("full_work_days_per_month", 22)),
-        help="המכנה לחלוקה היחסית. ברירת המחדל מניחה שכולם עבדו חודש מלא."))
+    month_label = st.text_input("חודש", "יוני 2026")
+    month_first, month_last = _month_bounds(month_label)
+    month_days = days_in_month(month_label)
+    st.caption(f"החודש נספר כ-{month_days} ימים. הבונוסים הקבועים מחולקים יחסית "
+               "לחלק מהחודש שבו הנציג היה בתפקיד — היעדרות אינה מקטינה אותם.")
 
-    detected, coverage = _detected_work_days(att_file, agents)
+    hints  = _attendance_hints(att_file, agents)
     manual = {}
     cols = st.columns(len(agents))
     for col, agent in zip(cols, agents):
@@ -94,17 +92,27 @@ def render():
                 f'text-align:right;margin-bottom:8px;">{agent["name"]}</div>',
                 unsafe_allow_html=True,
             )
+            period = st.date_input(
+                "בתפקיד", value=(month_first, month_last),
+                min_value=month_first, max_value=month_last,
+                format="DD/MM/YYYY", key=f"bd_{agent['id']}",
+                help="שנה רק אם הנציג נכנס או עזב באמצע החודש.")
+            # date_input hands back a single date while a new range is being picked
+            start, end = (period if isinstance(period, (tuple, list)) and len(period) == 2
+                          else (period[0] if isinstance(period, (tuple, list)) else period,
+                                month_last))
             manual[agent["id"]] = {
                 "meetings":   st.number_input("תיאומים",   min_value=0, key=f"bm_{agent['id']}"),
                 "phoenix":    st.number_input("פניקס",     min_value=0, key=f"bp_{agent['id']}"),
                 "idle_calls": st.number_input("שיחות סרק", min_value=0, key=f"bi_{agent['id']}"),
-                "work_days":  int(st.number_input(
-                    "ימי עבודה", min_value=0, step=1, value=full_days,
-                    key=f"bd_{agent['id']}")),
+                # a full month means "untouched" — keep it out of the reports
+                "role_start": None if start == month_first else start,
+                "role_end":   None if end == month_last else end,
             }
-            det = detected.get(agent["employee_id"])
-            if det is not None and coverage:
-                st.caption(f"זוהו {det} ימים בקובץ, מתוך {coverage}")
+            seen_first, seen_last = hints.get(agent["employee_id"], (None, None))
+            if seen_first is not None:
+                st.caption(f"נראה בקובץ הנוכחות מ-{seen_first.strftime('%d/%m')} "
+                           f"עד {seen_last.strftime('%d/%m')}")
 
     # ── Compute / Save buttons ───────────────────────────────────────────────
     if att_file and vc_file:
@@ -115,7 +123,7 @@ def render():
         if calc_clicked or save_direct_clicked:
             try:
                 res = compute_month(att_file, vc_file, fb_file, manual, agents,
-                                    settings, month_label, full_month_days=full_days)
+                                    settings, month_label)
             except Exception as e:
                 st.error(f"שגיאה בקריאת קבצים: {e}")
                 return
@@ -175,7 +183,7 @@ def render():
     st.markdown("---")
     ui.section_header("פירוט לנציגים")
     for k, b in zip(kpi_data, bonus_data):
-        _f = k.get("work_days_factor", 1.0)
+        _f = k.get("role_factor", 1.0)
         _pro = "—" if _f >= 1.0 else f"×{_f:.2f}"
         with st.expander(f"{k['name']}  —  סה\"כ ₪{b['total']:,}", key=f"exp_{k['agent_id']}"):
             c1, c2, c3, c4, c5, c6, c7, c8 = st.columns(8)
@@ -186,7 +194,7 @@ def render():
             c5.metric("סרק",          f"{k['idle_pct']*100:.2f}%")
             c6.metric('סה"כ שיחות',   k.get("total_calls", k.get("answered_calls", 0)))
             c7.metric("% מענה",       f"{k.get('answer_rate', 0)*100:.1f}%")
-            c8.metric("ימי עבודה",     f"{k.get('work_days', '—')}")
+            c8.metric("ימים בתפקיד",   f"{k.get('role_days', '—')}")
             st.dataframe(
                 [
                     {"רכיב": "עמלת תיאומים",    "₪": b["meetings_bonus"] - b.get("center_bonus", 0),
