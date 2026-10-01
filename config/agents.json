@@ -2,5 +2,6 @@
   {"id": "david_ziv",      "name": "דיוד זיו",    "employee_id": 96186, "email": "", "active": true,  "voicenter_name": "david ziv",    "feedback_name": "דיוד"},
   {"id": "elinor",         "name": "אלינור אדזיאשוילי", "employee_id": 98752, "email": "", "active": true,  "voicenter_name": "elinor",        "feedback_name": "אלינור"},
   {"id": "perry_yavdayev", "name": "פרי יבדייב",   "employee_id": 99133, "email": "", "active": true,  "voicenter_name": "פרי יבדייב",   "feedback_name": "פרי"},
-  {"id": "mayan_mansharov", "name": "מעיין מנשירוב", "employee_id": 98730, "email": "", "active": true,  "voicenter_name": "מעיין מנשירוב", "feedback_name": "מעיין"}
+  {"id": "mayan_mansharov", "name": "מעיין מנשירוב", "employee_id": 98730, "email": "", "active": true,  "voicenter_name": "מעיין מנשירוב", "feedback_name": "מעיין"},
+  {"id": "coral_sztejfman", "name": "קורל שטכפמן", "employee_id": 99495, "email": "", "active": true,  "voicenter_name": "Coral Sztejfman", "feedback_name": "קורל"}
 ]
