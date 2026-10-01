@@ -131,3 +131,57 @@ def test_parse_voicenter_filters_total_rows():
         assert df.iloc[0]['משתמש'] == 'טום'
     finally:
         os.unlink(path)
+
+
+# ── Voicenter exports that are not the native HTML table ──────────
+
+_VC_HEADERS = ['משתמש', 'סה"כ שיחות', 'נענו',
+               'שיחות שלא נענו', 'אחוז תעסוקה נטו']
+_VC_ROW = ['דיוד זיו', 200, 190, 10, '35%']
+
+
+def test_parse_voicenter_reads_a_real_excel_workbook():
+    """Opening the export in Excel and saving turns it into a real workbook."""
+    import openpyxl
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.append(["דוח שיחות"])        # Voicenter puts a title row above the headers
+    ws.append(_VC_HEADERS)
+    ws.append(_VC_ROW)
+    with tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False) as f:
+        path = f.name
+    wb.save(path)
+    try:
+        df = parse_voicenter(path)
+        assert df.iloc[0]['משתמש'] == 'דיוד זיו'
+        assert df.iloc[0]['נענו'] == 190
+        assert df.iloc[0]['אחוז תעסוקה נטו'] == pytest.approx(0.35)
+    finally:
+        os.unlink(path)
+
+
+def test_parse_voicenter_reads_a_csv_export():
+    with tempfile.NamedTemporaryFile(suffix='.csv', delete=False, mode='w',
+                                     encoding='utf-8-sig', newline='') as f:
+        f.write(",".join(_VC_HEADERS) + "\n")
+        f.write(",".join(str(v) for v in _VC_ROW) + "\n")
+        path = f.name
+    try:
+        df = parse_voicenter(path)
+        assert df.iloc[0]['משתמש'] == 'דיוד זיו'
+        assert df.iloc[0]['כניסות'] == 200
+    finally:
+        os.unlink(path)
+
+
+def test_parse_voicenter_unreadable_file_says_what_it_got():
+    """A generic 'cannot read' sends you hunting — name the format instead."""
+    with tempfile.NamedTemporaryFile(suffix='.xls', delete=False) as f:
+        f.write(b"%PDF-1.4 this is not a report at all")
+        path = f.name
+    try:
+        with pytest.raises(KeyError) as err:
+            parse_voicenter(path)
+        assert "PDF" in str(err.value)
+    finally:
+        os.unlink(path)

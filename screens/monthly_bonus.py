@@ -71,7 +71,8 @@ def render():
     ui.section_header("העלאת קבצים", step=1)
     c1, c2, c3 = st.columns(3)
     att_file = c1.file_uploader("נוכחות (.xlsx)",              type=['xlsx'],       key="b_att")
-    vc_file  = c2.file_uploader("Voicenter (.xls)",            type=['xls','xlsx'], key="b_vc")
+    vc_file  = c2.file_uploader("Voicenter (.xls / .xlsx / .csv)",
+                                type=['xls', 'xlsx', 'csv'],         key="b_vc")
     fb_file  = c3.file_uploader("משובים (.xlsx) — אופציונלי", type=['xlsx'],       key="b_fb")
 
     # ── Step 2: manual input ─────────────────────────────────────────────────

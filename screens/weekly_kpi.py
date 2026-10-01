@@ -27,7 +27,8 @@ def render():
     ui.section_header("העלאת קבצים", step=1)
     c1, c2 = st.columns(2)
     att_file = c1.file_uploader("נוכחות (.xlsx)", type=['xlsx'], key="w_att")
-    vc_file  = c2.file_uploader("Voicenter (.xls)", type=['xls','xlsx'], key="w_vc")
+    vc_file  = c2.file_uploader("Voicenter (.xls / .xlsx / .csv)",
+                                type=['xls', 'xlsx', 'csv'], key="w_vc")
     if not att_file or not vc_file:
         st.info("נא להעלות את שני הקבצים להמשך")
         return

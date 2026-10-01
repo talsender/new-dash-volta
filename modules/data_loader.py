@@ -54,18 +54,55 @@ def parse_attendance(filepath: str) -> pd.DataFrame:
     return df
 
 
-def parse_voicenter(filepath: str) -> pd.DataFrame:
-    raw = None
+def _describe_file(filepath: str) -> str:
+    """Name the uploaded format, so a failure says what arrived instead of 'cannot read'."""
+    with open(filepath, 'rb') as f:
+        head = f.read(8)
+    if head[:4] == b'%PDF':
+        return "PDF"
+    if head[:2] == b'PK':
+        return "xlsx פגום או ארכיון ZIP"
+    if head[:4] == b'\xd0\xcf\x11\xe0':
+        return 'xls בינארי ישן'
+    if head[:2] in (b'\xff\xfe', b'\xfe\xff') or head[:1] == b'<':
+        return "HTML"
+    return "טקסט או פורמט לא מזוהה"
+
+
+def _read_voicenter_table(filepath: str):
+    """Voicenter exports an HTML table named .xls. Opening that in Excel and saving
+    turns it into a real workbook, and some exports arrive delimited — read all three.
+    """
     for enc in ('utf-16', 'utf-8', 'windows-1255'):
         try:
             tables = pd.read_html(filepath, encoding=enc, header=None)
             if tables:
-                raw = tables[0]
-                break
+                return tables[0]
         except Exception:
             continue
+    try:
+        return pd.read_excel(filepath, header=None)
+    except Exception:
+        pass
+    for enc in ('utf-8-sig', 'utf-16', 'windows-1255'):
+        for sep in ('\t', ','):
+            try:
+                df = pd.read_csv(filepath, sep=sep, header=None,
+                                 encoding=enc, engine='python')
+                if df.shape[1] > 1:
+                    return df
+            except Exception:
+                continue
+    return None
+
+
+def parse_voicenter(filepath: str) -> pd.DataFrame:
+    raw = _read_voicenter_table(filepath)
     if raw is None:
-        raise KeyError("לא ניתן לקרוא את קובץ Voicenter")
+        raise KeyError(
+            f"לא ניתן לקרוא את קובץ Voicenter — הקובץ נראה כמו {_describe_file(filepath)}. "
+            "ייצא מחדש מ-Voicenter, או שמור אותו כ-Excel Workbook (.xlsx)."
+        )
 
     raw = raw.astype(str).apply(lambda col: col.str.strip())
     col_names = [str(c).strip() for c in raw.columns]
