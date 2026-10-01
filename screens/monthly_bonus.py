@@ -1,7 +1,7 @@
 # screens/monthly_bonus.py
 import streamlit as st
 import tempfile, os
-from modules.month_calc import compute_month, build_snapshot
+from modules.month_calc import compute_month, build_snapshot, agents_missing_data
 from modules.config_manager import load_agents, load_settings
 from modules.email_builder import (build_monthly_client_email, build_monthly_agent_email)
 from modules.email_sender import send_email
@@ -142,6 +142,16 @@ def render():
     month_label   = res["month_label"]
 
     # ── Step 3: results ──────────────────────────────────────────────────────
+    missing = agents_missing_data(kpi_data)
+    if missing:
+        rows = [f"- **{name}** — חסר בדוח {', '.join(src)}" for name, src in missing]
+        st.warning(
+            "לנציגים הבאים לא נמצאו נתונים בדוחות, והמדדים שלהם מוצגים כאפס — "
+            "מה שלא מבדיל בין ביצועים חלשים לנתון חסר:\n\n"
+            + "\n".join(rows)
+            + "\n\nבדוק שהשם ב**ניהול נציגים** תואם בדיוק לשם בדוח. הבונוסים לא שונו."
+        )
+
     ui.section_header("תוצאות", step=3)
     c_a, c_b = st.columns(2)
     c_a.metric("קצב מוקד", f"{center_rate:.2f}/שעה",

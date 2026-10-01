@@ -56,6 +56,25 @@ def _get_feedback(scores: dict, agent_name: str, feedback_name: str = None):
     return entry.get('score') if isinstance(entry, dict) else entry
 
 
+def agents_missing_data(kpi_data: list) -> list:
+    """[(name, ["Voicenter", ...]), ...] for agents whose source reports held nothing.
+
+    Their metrics read as zeros, which is indistinguishable from genuinely bad
+    performance — and a zero idle rate even earns the top idle bonus. Surfacing
+    it is the point; the numbers themselves are left alone.
+    """
+    out = []
+    for k in kpi_data:
+        missing = []
+        if not k.get("has_vc_data", True):
+            missing.append("Voicenter")
+        if not k.get("has_attendance", True):
+            missing.append("נוכחות")
+        if missing:
+            out.append((k.get("name", "?"), missing))
+    return out
+
+
 def compute_month(att_file, vc_file, fb_file, manual, agents, settings, month_label,
                   month_key=None, full_month_days=None):
     """Parse uploaded files and compute all KPI/bonus data.
@@ -94,12 +113,14 @@ def compute_month(att_file, vc_file, fb_file, manual, agents, settings, month_la
         total_calls = int(vc_row['כניסות'].iloc[0])           if len(vc_row) else 0
         occ_pct     = float(vc_row['אחוז תעסוקה נטו'].iloc[0]) if len(vc_row) else 0.0
         # untouched input means a full month — never prorate what was not asked for
+        has_vc      = bool(len(vc_row))
         work_days   = inp.get("work_days", full_days)
         wd_factor   = calculate_work_days_factor(work_days, full_days)
         kpi_data.append({
             "agent_id": agent["id"], "name": agent["name"],
             "employee_id": agent["employee_id"], "email": agent.get("email", ""),
             "work_days": work_days, "work_days_factor": wd_factor,
+            "has_vc_data": has_vc, "has_attendance": hours > 0,
             "hours": hours, "meetings": inp["meetings"],
             "meetings_per_hour": calculate_meetings_per_hour(inp["meetings"], hours),
             "occupancy_pct": occ_pct, "idle_calls": inp["idle_calls"],

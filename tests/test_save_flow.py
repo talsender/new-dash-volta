@@ -243,6 +243,30 @@ def test_build_snapshot_work_days_defaults_to_a_full_month():
     assert snap["agents"][0]["work_days_factor"] == 1.0
 
 
+# ── missing-source-data warning ──────────────────────────
+
+def test_agents_missing_data_names_the_missing_report():
+    from modules.month_calc import agents_missing_data
+
+    kpi = [
+        {"name": "דיוד", "has_vc_data": True,  "has_attendance": True},
+        {"name": "קורל", "has_vc_data": False, "has_attendance": True},
+        {"name": "מעיין", "has_vc_data": False, "has_attendance": False},
+    ]
+    result = dict(agents_missing_data(kpi))
+
+    assert "דיוד" not in result
+    assert result["קורל"] == ["Voicenter"]
+    assert result["מעיין"] == ["Voicenter", "נוכחות"]
+
+
+def test_agents_missing_data_assumes_present_when_flags_absent():
+    """KPI dicts from before the flags existed must not raise a false alarm."""
+    from modules.month_calc import agents_missing_data
+
+    assert agents_missing_data([{"name": "דיוד"}]) == []
+
+
 # ── session cache tests ────────────────────────────────────────────────────
 
 def test_save_month_sets_session_cache():
