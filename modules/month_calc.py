@@ -4,6 +4,7 @@ import tempfile, os
 from modules.data_loader import parse_attendance, parse_voicenter, parse_feedback
 from modules.calculator import (calculate_work_hours, calculate_meetings_per_hour,
                                  calculate_idle_pct, calculate_answer_rate,
+                                 calculate_work_days_factor,
                                  calculate_center_rate,
                                  calculate_agent_bonus, calculate_manager_bonus)
 
@@ -55,13 +56,15 @@ def _get_feedback(scores: dict, agent_name: str, feedback_name: str = None):
     return entry.get('score') if isinstance(entry, dict) else entry
 
 
-def compute_month(att_file, vc_file, fb_file, manual, agents, settings, month_label, month_key=None):
+def compute_month(att_file, vc_file, fb_file, manual, agents, settings, month_label,
+                  month_key=None, full_month_days=None):
     """Parse uploaded files and compute all KPI/bonus data.
 
     Raises on parse failure — caller should catch and display the error.
     Returns a results dict.
     """
     t = settings["bonus_thresholds"]
+    full_days = full_month_days or t.get("full_work_days_per_month", 22)
 
     att_path = _save_upload(att_file, '.xlsx')
     vc_path  = _save_upload(vc_file, '.xls')
@@ -90,9 +93,13 @@ def compute_month(att_file, vc_file, fb_file, manual, agents, settings, month_la
         answered    = int(vc_row['נענו'].iloc[0])              if len(vc_row) else 0
         total_calls = int(vc_row['כניסות'].iloc[0])           if len(vc_row) else 0
         occ_pct     = float(vc_row['אחוז תעסוקה נטו'].iloc[0]) if len(vc_row) else 0.0
+        # untouched input means a full month — never prorate what was not asked for
+        work_days   = inp.get("work_days", full_days)
+        wd_factor   = calculate_work_days_factor(work_days, full_days)
         kpi_data.append({
             "agent_id": agent["id"], "name": agent["name"],
             "employee_id": agent["employee_id"], "email": agent.get("email", ""),
+            "work_days": work_days, "work_days_factor": wd_factor,
             "hours": hours, "meetings": inp["meetings"],
             "meetings_per_hour": calculate_meetings_per_hour(inp["meetings"], hours),
             "occupancy_pct": occ_pct, "idle_calls": inp["idle_calls"],
@@ -115,8 +122,10 @@ def compute_month(att_file, vc_file, fb_file, manual, agents, settings, month_la
         kpi_in = {"meetings": k["meetings"], "individual_rate": k["meetings_per_hour"],
                   "occupancy_pct": k["occupancy_pct"], "idle_pct": k["idle_pct"],
                   "feedback_score": k["feedback_score"], "phoenix": k["phoenix"]}
-        b = calculate_agent_bonus(kpi_in, center_meets, settings)
-        bonus_data.append({"name": k["name"], "employee_id": k["employee_id"], **b})
+        b = calculate_agent_bonus(kpi_in, center_meets, settings,
+                                  work_days_factor=k.get("work_days_factor", 1.0))
+        bonus_data.append({"name": k["name"], "employee_id": k["employee_id"],
+                           "work_days": k.get("work_days", full_days), **b})
 
     manager_bonus = calculate_manager_bonus(center_rate, settings)
     total_phoenix = sum(k["phoenix"] for k in kpi_data)
@@ -134,6 +143,7 @@ def compute_month(att_file, vc_file, fb_file, manual, agents, settings, month_la
         "center_meets":  center_meets,
         "manager_bonus": manager_bonus,
         "billing":       billing,
+        "full_month_days": full_days,
         "month_label": month_label,
         "month_key":   (month_key or month_label).strip(),
     }
@@ -145,6 +155,7 @@ def build_snapshot(res, month_label):
     bonus_data = res["bonus_data"]
     billing    = res["billing"]
     n = len(kpi_data) or 1
+    full_days = res.get("full_month_days", 22)
     total_answered = sum(k.get("answered_calls", 0) for k in kpi_data)
     total_calls    = sum(k.get("total_calls", k.get("answered_calls", 0)) for k in kpi_data)
     return {
@@ -165,6 +176,7 @@ def build_snapshot(res, month_label):
         "avg_occupancy_pct":    sum(k["occupancy_pct"] for k in kpi_data) / n,
         "avg_idle_pct":         sum(k["idle_pct"] for k in kpi_data) / n,
         "total_agent_bonus":    sum(b["total"] for b in bonus_data),
+        "full_month_days":      full_days,
         # Per-agent breakdown
         "agents": [{
             "name":              k["name"],
@@ -173,6 +185,8 @@ def build_snapshot(res, month_label):
             "meetings_per_hour": k["meetings_per_hour"],
             "occupancy_pct":     k["occupancy_pct"],
             "idle_pct":          k["idle_pct"],
+            "work_days":         k.get("work_days", full_days),
+            "work_days_factor":  k.get("work_days_factor", 1.0),
             "answer_rate":       calculate_answer_rate(
                 k.get("answered_calls", 0),
                 k.get("total_calls", k.get("answered_calls", 0))),

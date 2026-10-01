@@ -8,6 +8,27 @@ def calculate_work_hours(attendance_df: pd.DataFrame, employee_id: int) -> float
     return max(0.0, float(working['סה"כ כללי'].sum()) - len(full_days))
 
 
+def count_work_days(attendance_df: pd.DataFrame, employee_id: int) -> int:
+    """Days the employee actually clocked in, within whatever the report covers."""
+    emp = attendance_df[attendance_df['מספר עובד'] == employee_id]
+    return int((emp['סה"כ כללי'] > 0).sum())
+
+
+def attendance_coverage(attendance_df: pd.DataFrame):
+    """(first_date, last_date, distinct_days) of the report, for the work-days hint.
+
+    Returns (None, None, 0) when the file carries no date column, so callers
+    can tell "no coverage known" from a genuine one-day report.
+    """
+    if 'תאריך' not in attendance_df.columns:
+        return None, None, 0
+    worked = attendance_df[attendance_df['סה"כ כללי'] > 0]
+    dates = pd.to_datetime(worked['תאריך'], errors='coerce').dropna()
+    if dates.empty:
+        return None, None, 0
+    return dates.min(), dates.max(), int(dates.dt.normalize().nunique())
+
+
 def calculate_meetings_per_hour(meetings: int, hours: float) -> float:
     return 0.0 if hours == 0 else meetings / hours
 
@@ -18,6 +39,17 @@ def calculate_idle_pct(idle_calls: int, answered_calls: int) -> float:
 
 def calculate_answer_rate(answered_calls: int, total_calls: int) -> float:
     return 0.0 if total_calls == 0 else answered_calls / total_calls
+
+
+def calculate_work_days_factor(days_worked: float, full_month_days: float) -> float:
+    """Share of the month actually worked, capped at 1.0.
+
+    A full_month_days of 0 means we were not told the month length, so assume
+    a full month rather than silently zeroing someone's bonus.
+    """
+    if full_month_days <= 0:
+        return 1.0
+    return min(1.0, days_worked / full_month_days)
 
 
 def calculate_center_rate(agents: list) -> float:
@@ -59,14 +91,28 @@ def calculate_feedback_bonus(score) -> float:
     return 0
 
 
-def calculate_agent_bonus(kpi: dict, center_meets: bool, settings: dict) -> dict:
+def calculate_agent_bonus(kpi: dict, center_meets: bool, settings: dict,
+                          work_days_factor: float = 1.0) -> dict:
+    """Bonus breakdown for one agent.
+
+    work_days_factor prorates only the fixed monthly sums (occupancy, idle,
+    feedback). The per-unit components — the meetings commission, the team
+    target bonus folded into it, and phoenix — already scale with what the
+    agent produced, so cutting them again would penalise the same absence
+    twice. A factor of 1.0 reproduces the untouched calculation exactly.
+
+    meetings_bonus keeps its original meaning and still includes the team
+    target bonus; center_bonus reports that part on its own, for display.
+    """
     t = settings["bonus_thresholds"]
     m = calculate_meetings_bonus(kpi["meetings"], kpi["individual_rate"], center_meets)
-    o = calculate_occupancy_bonus(kpi["occupancy_pct"])
-    i = calculate_idle_bonus(kpi["idle_pct"])
-    fb = calculate_feedback_bonus(kpi.get("feedback_score"))
+    ctr = kpi["meetings"] if center_meets else 0
+    o = round(calculate_occupancy_bonus(kpi["occupancy_pct"]) * work_days_factor)
+    i = round(calculate_idle_bonus(kpi["idle_pct"]) * work_days_factor)
+    fb = round(calculate_feedback_bonus(kpi.get("feedback_score")) * work_days_factor)
     ph = kpi["phoenix"] * t["phoenix_employee_rate"]
-    return {"meetings_bonus": m, "occupancy_bonus": o, "idle_bonus": i,
+    return {"meetings_bonus": m, "center_bonus": ctr,
+            "occupancy_bonus": o, "idle_bonus": i,
             "feedback_bonus": fb, "phoenix_bonus": ph, "total": m + o + i + fb + ph}
 
 

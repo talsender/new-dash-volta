@@ -198,6 +198,51 @@ def test_build_snapshot_answer_rate_zero_when_no_calls():
     assert snap["agents"][0]["answer_rate"] == 0.0
 
 
+def test_build_snapshot_stores_work_days_and_factor():
+    """A past month must be explainable — keep the days and the factor used."""
+    from modules.month_calc import build_snapshot
+
+    res = {
+        "kpi_data": [{
+            "name": "א", "hours": 94.0, "meetings": 99, "meetings_per_hour": 1.05,
+            "occupancy_pct": 0.361, "idle_pct": 0.0209, "feedback_score": 8.2,
+            "phoenix": 2, "work_days": 11, "work_days_factor": 0.5,
+        }],
+        "bonus_data": [{"name": "א", "total": 944}],
+        "center_rate": 1.05,
+        "center_meets": True,
+        "manager_bonus": 2000,
+        "full_month_days": 22,
+        "billing": {"phoenix_billing": 40000, "total_hours": 94.0, "phoenix_count": 2},
+    }
+    snap = build_snapshot(res, "ספטמבר 2026")
+
+    assert snap["full_month_days"] == 22
+    agent = snap["agents"][0]
+    assert agent["work_days"] == 11
+    assert agent["work_days_factor"] == pytest.approx(0.5)
+
+
+def test_build_snapshot_work_days_defaults_to_a_full_month():
+    """Months computed before this field existed must read back as full months."""
+    from modules.month_calc import build_snapshot
+
+    res = {
+        "kpi_data": [{
+            "name": "א", "hours": 190.0, "meetings": 208, "meetings_per_hour": 1.09,
+            "occupancy_pct": 0.382, "idle_pct": 0.0178, "feedback_score": 8.7, "phoenix": 3,
+        }],
+        "bonus_data": [{"name": "א", "total": 1998}],
+        "center_rate": 1.09,
+        "center_meets": True,
+        "manager_bonus": 2000,
+        "billing": {"phoenix_billing": 40000, "total_hours": 190.0, "phoenix_count": 3},
+    }
+    snap = build_snapshot(res, "ספטמבר 2026")
+
+    assert snap["agents"][0]["work_days_factor"] == 1.0
+
+
 # ── session cache tests ────────────────────────────────────────────────────
 
 def test_save_month_sets_session_cache():

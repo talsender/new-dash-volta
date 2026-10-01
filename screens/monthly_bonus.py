@@ -7,6 +7,8 @@ from modules.email_builder import (build_monthly_client_email, build_monthly_age
 from modules.email_sender import send_email
 from modules.excel_exporter import export_monthly_bonus, export_agent_bonus
 from modules.history_manager import save_month
+from modules.calculator import count_work_days, attendance_coverage
+from modules.data_loader import parse_attendance
 from modules import ui
 
 _SS_KEY = "mb_results"
@@ -37,6 +39,28 @@ def _do_save_and_navigate(res, month_label):
     st.rerun()
 
 
+def _detected_work_days(att_file, agents):
+    """{employee_id: days} plus a coverage label, read from the attendance file.
+
+    Only a hint shown next to the input — the file may cover a partial period,
+    so it must never drive the calculation on its own. Returns ({}, "") when
+    the file cannot be read, so a bad upload never blocks the screen.
+    """
+    if not att_file:
+        return {}, ""
+    try:
+        att_file.seek(0)
+        df = parse_attendance(att_file)
+        att_file.seek(0)          # compute_month reads the same handle afterwards
+        first, last, days = attendance_coverage(df)
+        label = ""
+        if first is not None:
+            label = f"{days} ימים בטווח {first.strftime('%d/%m')}–{last.strftime('%d/%m')}"
+        return {a["employee_id"]: count_work_days(df, a["employee_id"]) for a in agents}, label
+    except Exception:
+        return {}, ""
+
+
 def render():
     ui.page_header("בונוסים חודשיים", icon="💰", subtitle="חישוב בונוסים, Excel ושליחת מיילים")
 
@@ -52,7 +76,14 @@ def render():
 
     # ── Step 2: manual input ─────────────────────────────────────────────────
     ui.section_header("הזנה ידנית", step=2)
-    month_label = st.text_input("חודש", "יוני 2026")
+    c_lbl, c_days = st.columns([2, 1])
+    month_label = c_lbl.text_input("חודש", "יוני 2026")
+    full_days = int(c_days.number_input(
+        "ימי עבודה בחודש", min_value=1, step=1,
+        value=int(settings["bonus_thresholds"].get("full_work_days_per_month", 22)),
+        help="המכנה לחלוקה היחסית. ברירת המחדל מניחה שכולם עבדו חודש מלא."))
+
+    detected, coverage = _detected_work_days(att_file, agents)
     manual = {}
     cols = st.columns(len(agents))
     for col, agent in zip(cols, agents):
@@ -66,7 +97,13 @@ def render():
                 "meetings":   st.number_input("תיאומים",   min_value=0, key=f"bm_{agent['id']}"),
                 "phoenix":    st.number_input("פניקס",     min_value=0, key=f"bp_{agent['id']}"),
                 "idle_calls": st.number_input("שיחות סרק", min_value=0, key=f"bi_{agent['id']}"),
+                "work_days":  int(st.number_input(
+                    "ימי עבודה", min_value=0, step=1, value=full_days,
+                    key=f"bd_{agent['id']}")),
             }
+            det = detected.get(agent["employee_id"])
+            if det is not None and coverage:
+                st.caption(f"זוהו {det} ימים בקובץ, מתוך {coverage}")
 
     # ── Compute / Save buttons ───────────────────────────────────────────────
     if att_file and vc_file:
@@ -76,7 +113,8 @@ def render():
 
         if calc_clicked or save_direct_clicked:
             try:
-                res = compute_month(att_file, vc_file, fb_file, manual, agents, settings, month_label)
+                res = compute_month(att_file, vc_file, fb_file, manual, agents,
+                                    settings, month_label, full_month_days=full_days)
             except Exception as e:
                 st.error(f"שגיאה בקריאת קבצים: {e}")
                 return
@@ -126,8 +164,10 @@ def render():
     st.markdown("---")
     ui.section_header("פירוט לנציגים")
     for k, b in zip(kpi_data, bonus_data):
+        _f = k.get("work_days_factor", 1.0)
+        _pro = "—" if _f >= 1.0 else f"×{_f:.2f}"
         with st.expander(f"{k['name']}  —  סה\"כ ₪{b['total']:,}", key=f"exp_{k['agent_id']}"):
-            c1, c2, c3, c4, c5, c6, c7 = st.columns(7)
+            c1, c2, c3, c4, c5, c6, c7, c8 = st.columns(8)
             c1.metric("שעות",         f"{k['hours']:.1f}")
             c2.metric("תיאומים",      k["meetings"])
             c3.metric("תיאומים/שעה",  f"{k['meetings_per_hour']:.2f}")
@@ -135,14 +175,18 @@ def render():
             c5.metric("סרק",          f"{k['idle_pct']*100:.2f}%")
             c6.metric('סה"כ שיחות',   k.get("total_calls", k.get("answered_calls", 0)))
             c7.metric("% מענה",       f"{k.get('answer_rate', 0)*100:.1f}%")
+            c8.metric("ימי עבודה",     f"{k.get('work_days', '—')}")
             st.dataframe(
                 [
-                    {"רכיב": "עמלת תיאומים",    "₪": b["meetings_bonus"]},
-                    {"רכיב": "בונוס תעסוקה",    "₪": b["occupancy_bonus"]},
-                    {"רכיב": "בונוס סרק",        "₪": b["idle_bonus"]},
-                    {"רכיב": "בונוס משוב",       "₪": b["feedback_bonus"]},
-                    {"רכיב": "בונוס פניקס",      "₪": b["phoenix_bonus"]},
-                    {"רכיב": 'סה"כ',             "₪": b["total"]},
+                    {"רכיב": "עמלת תיאומים",    "₪": b["meetings_bonus"] - b.get("center_bonus", 0),
+                     "יחסי": "—"},
+                    {"רכיב": "בונוס ליעד צוותי", "₪": b.get("center_bonus", 0),
+                     "יחסי": "—"},
+                    {"רכיב": "בונוס פניקס",      "₪": b["phoenix_bonus"], "יחסי": "—"},
+                    {"רכיב": "בונוס תעסוקה",    "₪": b["occupancy_bonus"], "יחסי": _pro},
+                    {"רכיב": "בונוס סרק",        "₪": b["idle_bonus"],      "יחסי": _pro},
+                    {"רכיב": "בונוס משוב",       "₪": b["feedback_bonus"],  "יחסי": _pro},
+                    {"רכיב": 'סה"כ',             "₪": b["total"], "יחסי": ""},
                 ],
                 use_container_width=True, hide_index=True,
             )

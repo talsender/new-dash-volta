@@ -179,3 +179,68 @@ def test_history_summary_total_ignores_months_without_answer_rate():
         assert ws.cell(hdr_row + 3, col).value == pytest.approx(3869 / 4830)
     finally:
         os.unlink(path)
+
+
+# ── Work-days proration ────────────────────────────────
+
+def test_monthly_bonus_sheet_has_work_days_column():
+    kpi = [{**_kpi()[0], "work_days": 11, "work_days_factor": 0.5}]
+    bonus = [{**_bonus()[0], "work_days": 11}]
+    with tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False) as f:
+        path = f.name
+    try:
+        export_monthly_bonus(bonus, _billing(), "ספטמבר 2026", path, kpi_data=kpi)
+        ws = openpyxl.load_workbook(path)['פירוט בונוסים']
+        hdr_row, col = _col_of(ws, "ימי עבודה")
+        assert ws.cell(hdr_row + 1, col).value == 11
+    finally:
+        os.unlink(path)
+
+
+def test_agent_sheet_has_work_days_row():
+    kpi = {**_kpi()[0], "work_days": 7, "work_days_factor": 7 / 22}
+    with tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False) as f:
+        path = f.name
+    try:
+        export_agent_bonus(kpi, _bonus()[0], "ספטמבר 2026", path)
+        ws = openpyxl.load_workbook(path)['בונוס אישי']
+        labels = {ws.cell(r, 1).value: r for r in range(1, ws.max_row + 1)}
+        assert "ימי עבודה" in labels
+        assert ws.cell(labels["ימי עבודה"], 2).value == 7
+    finally:
+        os.unlink(path)
+
+
+def test_agent_sheet_fixed_bonus_formulas_reference_the_work_days_cell():
+    """Editing the days cell in Excel must move the three fixed bonuses with it."""
+    kpi = {**_kpi()[0], "work_days": 7, "work_days_factor": 7 / 22}
+    with tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False) as f:
+        path = f.name
+    try:
+        export_agent_bonus(kpi, _bonus()[0], "ספטמבר 2026", path)
+        ws = openpyxl.load_workbook(path)['בונוס אישי']
+        labels = {ws.cell(r, 1).value: r for r in range(1, ws.max_row + 1)}
+        wd_row = labels["ימי עבודה"]
+        for metric in ("אחוז תעסוקה", "אחוז סרק", "ציון משוב"):
+            formula = str(ws.cell(labels[metric], 4).value)
+            assert f"B{wd_row}" in formula, f"{metric} bonus ignores the work-days cell"
+            assert formula.startswith("=ROUND(")
+    finally:
+        os.unlink(path)
+
+
+def test_agent_sheet_per_unit_bonus_formulas_are_not_prorated():
+    """The commission, team bonus and phoenix must not reference the days cell."""
+    kpi = {**_kpi()[0], "work_days": 7, "work_days_factor": 7 / 22}
+    with tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False) as f:
+        path = f.name
+    try:
+        export_agent_bonus(kpi, _bonus()[0], "ספטמבר 2026", path)
+        ws = openpyxl.load_workbook(path)['בונוס אישי']
+        labels = {ws.cell(r, 1).value: r for r in range(1, ws.max_row + 1)}
+        wd_row = labels["ימי עבודה"]
+        for metric in ("עמלת תיאומים", "בונוס ליעד צוותי", "עסקת פניקס"):
+            formula = str(ws.cell(labels[metric], 4).value)
+            assert f"B{wd_row}" not in formula, f"{metric} must not be prorated"
+    finally:
+        os.unlink(path)

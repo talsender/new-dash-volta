@@ -16,6 +16,7 @@
     "feedback_tier_a_bonus": 150,
     "feedback_tier_b_score": 8.0,
     "feedback_tier_b_bonus": 100,
+    "full_work_days_per_month": 22,
     "phoenix_employee_rate": 50,
     "phoenix_client_rate": 100,
     "manager_bonus_a_rate": 1.0,

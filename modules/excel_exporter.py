@@ -357,6 +357,7 @@ def export_monthly_bonus(bonus_data: list, billing: dict,
     idle_good      = s["idle_tier_a_pct"] / 100
     idle_warn      = s["idle_tier_b_pct"] / 100
     mph_good       = s["meetings_per_hour_tier_a"]
+    full_days      = s.get("full_work_days_per_month", 22)
     mph_warn       = mph_good * 0.75
     rate_a         = s["meetings_per_hour_tier_a_rate"]   # 5 ₪
     rate_b         = s["meetings_per_hour_tier_b_rate"]   # 4 ₪
@@ -408,7 +409,8 @@ def export_monthly_bonus(bonus_data: list, billing: dict,
     # ── 2. פירוט בונוסים — 15 cols, phoenix @ 100 ₪ ─────────────────────────
     ws2 = wb.create_sheet("פירוט בונוסים")
     COLS2 = [
-        "שם נציג", "שעות", "תיאומים", "תיאומים/שעה",
+        "שם נציג", "שעות",
+        "ימי עבודה", "תיאומים", "תיאומים/שעה",
         "עמלת תיאומים", "תעסוקה %", "בונוס תעסוקה",
         "שיחות סרק", 'סה"כ שיחות', "% מענה", "% סרק", "בונוס סרק",
         "ציון משוב", "בונוס משוב",
@@ -476,32 +478,35 @@ def export_monthly_bonus(bonus_data: list, billing: dict,
 
         tc = k.get("total_calls", k.get("answered_calls", 0))
 
+        wd = b.get("work_days", k.get("work_days", full_days))
+
         _cell(ws2, ri,  1, b["name"],          bg=stripe, align=_RGT, bold=True)
         _cell(ws2, ri,  2, hrs,                 bg=stripe, fmt="0.0")
-        _cell(ws2, ri,  3, mtg,                 bg=stripe)
+        _cell(ws2, ri,  3, wd,                  bg=stripe)
+        _cell(ws2, ri,  4, mtg,                 bg=stripe)
         bg, fg = _status_color(mph, mph_good, mph_warn, True)
-        _cell(ws2, ri,  4, f"=C{ri}/B{ri}",   bg=bg, fg=fg, fmt="0.00")
+        _cell(ws2, ri,  5, f"=D{ri}/B{ri}",   bg=bg, fg=fg, fmt="0.00")
         bg5 = _GOOD_BG if mtg_base > 0 else stripe
         fg5 = _GOOD_FG if mtg_base > 0 else _META_FG
-        _cell(ws2, ri,  5, f"=IF(D{ri}>={mph_good},C{ri}*{rate_a},C{ri}*{rate_b})",
+        _cell(ws2, ri,  6, f"=IF(E{ri}>={mph_good},D{ri}*{rate_a},D{ri}*{rate_b})",
               bg=bg5, fg=fg5, fmt="#,##0 ₪")
         bg, fg = _status_color(occ, occ_good, occ_warn, True)
-        _cell(ws2, ri,  6, occ,                 bg=bg, fg=fg, fmt="0.0%")
-        _bonus_cell(ws2, ri,  7, b["occupancy_bonus"], stripe)
-        _cell(ws2, ri,  8, k.get("idle_calls", 0), bg=stripe)
-        _cell(ws2, ri,  9, tc,                  bg=stripe, fmt="#,##0")
-        _cell(ws2, ri, 10, _answer_rate(k),     bg=stripe, fmt="0.0%")
+        _cell(ws2, ri,  7, occ,                 bg=bg, fg=fg, fmt="0.0%")
+        _bonus_cell(ws2, ri,  8, b["occupancy_bonus"], stripe)
+        _cell(ws2, ri,  9, k.get("idle_calls", 0), bg=stripe)
+        _cell(ws2, ri, 10, tc,                  bg=stripe, fmt="#,##0")
+        _cell(ws2, ri, 11, _answer_rate(k),     bg=stripe, fmt="0.0%")
         bg, fg = _status_color(idl, idle_good, idle_warn, False)
-        _cell(ws2, ri, 11, idl,                 bg=bg, fg=fg, fmt="0.00%")
-        _bonus_cell(ws2, ri, 12, b["idle_bonus"], stripe)
+        _cell(ws2, ri, 12, idl,                 bg=bg, fg=fg, fmt="0.00%")
+        _bonus_cell(ws2, ri, 13, b["idle_bonus"], stripe)
         fb_bg = _GOOD_BG if fs and fs >= 8.5 else _WARN_BG if fs and fs >= 8.0 else stripe
-        _cell(ws2, ri, 13, fs if fs is not None else "—",
+        _cell(ws2, ri, 14, fs if fs is not None else "—",
               bg=fb_bg, fmt="0.0" if fs else None)
-        _bonus_cell(ws2, ri, 14, b["feedback_bonus"], stripe)
-        _bonus_cell(ws2, ri, 15, ph_val,         stripe)
-        _bonus_cell(ws2, ri, 16, ctr_bonus,      stripe)
+        _bonus_cell(ws2, ri, 15, b["feedback_bonus"], stripe)
+        _bonus_cell(ws2, ri, 16, ph_val,         stripe)
+        _bonus_cell(ws2, ri, 17, ctr_bonus,      stripe)
         bg, fg = _bonus_color(row_total)
-        _cell(ws2, ri, 17, f"=E{ri}+G{ri}+L{ri}+N{ri}+O{ri}+P{ri}",
+        _cell(ws2, ri, 18, f"=F{ri}+H{ri}+M{ri}+O{ri}+P{ri}+Q{ri}",
               bg=bg, fg=fg, bold=True, fmt="#,##0 ₪")
 
     _n2       = len(bonus_data) or 1
@@ -516,25 +521,26 @@ def export_monthly_bonus(bonus_data: list, billing: dict,
         (1,  'סה"כ'),
         (2,  f"=SUM(B{ds2}:B{sr2-1})",     "0.0"),
         (3,  f"=SUM(C{ds2}:C{sr2-1})"),
-        (4,  f"=C{sr2}/B{sr2}",             "0.00"),
-        (5,  f"=SUM(E{ds2}:E{sr2-1})",      "#,##0 ₪"),
-        (6,  f"=AVERAGE(F{ds2}:F{sr2-1})",  "0.0%"),
-        (7,  f"=SUM(G{ds2}:G{sr2-1})",      "#,##0 ₪"),
-        (8,  f"=SUM(H{ds2}:H{sr2-1})"),
+        (4,  f"=SUM(D{ds2}:D{sr2-1})"),
+        (5,  f"=D{sr2}/B{sr2}",             "0.00"),
+        (6,  f"=SUM(F{ds2}:F{sr2-1})",      "#,##0 ₪"),
+        (7,  f"=AVERAGE(G{ds2}:G{sr2-1})",  "0.0%"),
+        (8,  f"=SUM(H{ds2}:H{sr2-1})",      "#,##0 ₪"),
         (9,  f"=SUM(I{ds2}:I{sr2-1})"),
-        (10, _center_answer_rate,           "0.0%"),
-        (11, f"=AVERAGE(K{ds2}:K{sr2-1})",  "0.00%"),
-        (12, f"=SUM(L{ds2}:L{sr2-1})",      "#,##0 ₪"),
-        (13, round(_avg_fb, 1) if _avg_fb is not None else "—",
+        (10, f"=SUM(J{ds2}:J{sr2-1})"),
+        (11, _center_answer_rate,           "0.0%"),
+        (12, f"=AVERAGE(L{ds2}:L{sr2-1})",  "0.00%"),
+        (13, f"=SUM(M{ds2}:M{sr2-1})",      "#,##0 ₪"),
+        (14, round(_avg_fb, 1) if _avg_fb is not None else "—",
              "0.0" if _avg_fb is not None else None),
-        (14, f"=SUM(N{ds2}:N{sr2-1})",      "#,##0 ₪"),
         (15, f"=SUM(O{ds2}:O{sr2-1})",      "#,##0 ₪"),
         (16, f"=SUM(P{ds2}:P{sr2-1})",      "#,##0 ₪"),
         (17, f"=SUM(Q{ds2}:Q{sr2-1})",      "#,##0 ₪"),
+        (18, f"=SUM(R{ds2}:R{sr2-1})",      "#,##0 ₪"),
     ])
-    _autofit(ws2, {"A": 20, "B": 10, "C": 12, "D": 14, "E": 16,
-                   "F": 12, "G": 16, "H": 14, "I": 14, "J": 12, "K": 10,
-                   "L": 14, "M": 12, "N": 14, "O": 18, "P": 18, "Q": 14})
+    _autofit(ws2, {"A": 20, "B": 10, "C": 12, "D": 12, "E": 14, "F": 16,
+                   "G": 12, "H": 16, "I": 14, "J": 14, "K": 12, "L": 10,
+                   "M": 14, "N": 12, "O": 14, "P": 18, "Q": 18, "R": 14})
     _print_setup(ws2)
 
     # ── 3. סיכום מוקד ────────────────────────────────────────────────────────
@@ -627,6 +633,10 @@ def _populate_agent_sheet(ws, kpi: dict, bonus: dict,
     idl      = kpi.get("idle_pct", 0)
     fs       = kpi.get("feedback_score")
     ph_count = kpi.get("phoenix", 0)
+    full_days = s.get("full_work_days_per_month", 22)
+    work_days = kpi.get("work_days", full_days)
+    # live Excel proration — editing the days cell moves the fixed bonuses with it
+    wd_mult  = f"*MIN(1,B{{}}/{full_days})"
     base_r   = rate_a if mph >= mph_good else rate_b
     ctr_b    = meetings * center_rate if center_meets else 0
 
@@ -638,23 +648,28 @@ def _populate_agent_sheet(ws, kpi: dict, bonus: dict,
 
     # Pre-compute row indices for formula cross-references
     r_hrs    = ds        # שעות עבודה
-    r_mtg    = ds + 1   # תיאומים
-    r_mph    = ds + 2   # תיאומים לשעה
-    r_mtgb   = ds + 3   # עמלת תיאומים
-    r_ctr    = ds + 4   # בונוס ליעד צוותי
-    r_occ    = ds + 5   # אחוז תעסוקה
-    r_idlc   = ds + 6   # שיחות סרק
-    r_ans    = ds + 7   # שיחות שנענו
-    r_totc   = ds + 8   # סה"כ שיחות
-    r_ansr   = ds + 9   # אחוז מענה
-    r_idl    = ds + 10  # אחוז סרק
-    r_fb     = ds + 11  # ציון משוב
-    r_ph     = ds + 12  # עסקת פניקס
+    r_wd     = ds + 1   # ימי עבודה
+    r_mtg    = ds + 2   # תיאומים
+    r_mph    = ds + 3   # תיאומים לשעה
+    r_mtgb   = ds + 4   # עמלת תיאומים
+    r_ctr    = ds + 5   # בונוס ליעד צוותי
+    r_occ    = ds + 6   # אחוז תעסוקה
+    r_idlc   = ds + 7   # שיחות סרק
+    r_ans    = ds + 8   # שיחות שנענו
+    r_totc   = ds + 9   # סה"כ שיחות
+    r_ansr   = ds + 10  # אחוז מענה
+    r_idl    = ds + 11  # אחוז סרק
+    r_fb     = ds + 12  # ציון משוב
+    r_ph     = ds + 13  # עסקת פניקס
 
     rows = [
         (r_hrs,  "שעות עבודה",
          round(kpi.get("hours", 0), 1), "0.0",
          "—", None, None, "—"),
+
+        (r_wd,   "ימי עבודה",
+         work_days, None,
+         f"מתוך {full_days}", None, None, "—"),
 
         (r_mtg,  "תיאומים",
          meetings, None,
@@ -682,7 +697,8 @@ def _populate_agent_sheet(ws, kpi: dict, bonus: dict,
          occ, "0.0%",
          f"≥ {occ_good*100:.0f}%",
          *_status_color(occ, occ_good, occ_warn, True),
-         f"=IF(B{r_occ}>={occ_good},{occ_bon_a},IF(B{r_occ}>={occ_warn},{occ_bon_b},0))"),
+         f"=ROUND(IF(B{r_occ}>={occ_good},{occ_bon_a},IF(B{r_occ}>={occ_warn},{occ_bon_b},0))"
+         + wd_mult.format(r_wd) + ",0)"),
 
         (r_idlc, "שיחות סרק",
          kpi.get("idle_calls", 0), None,
@@ -704,13 +720,15 @@ def _populate_agent_sheet(ws, kpi: dict, bonus: dict,
          idl, "0.00%",
          f"≤ {idle_good*100:.0f}%",
          *_status_color(idl, idle_good, idle_warn, False),
-         f"=IF(B{r_idl}<={idle_good},{idle_bon_a},IF(B{r_idl}<={idle_warn},{idle_bon_b},0))"),
+         f"=ROUND(IF(B{r_idl}<={idle_good},{idle_bon_a},IF(B{r_idl}<={idle_warn},{idle_bon_b},0))"
+         + wd_mult.format(r_wd) + ",0)"),
 
         (r_fb,   "ציון משוב",
          fs if fs is not None else "—", "0.0" if fs else None,
          f"≥ {fb_b}",
          _GOOD_BG if fs and fs >= fb_a else _WARN_BG if fs and fs >= fb_b else None, None,
-         f"=IF(ISNUMBER(B{r_fb}),IF(B{r_fb}>={fb_a},{fb_bon_a},IF(B{r_fb}>={fb_b},{fb_bon_b},0)),0)"),
+         f"=ROUND(IF(ISNUMBER(B{r_fb}),IF(B{r_fb}>={fb_a},{fb_bon_a},"
+         f"IF(B{r_fb}>={fb_b},{fb_bon_b},0)),0)" + wd_mult.format(r_wd) + ",0)"),
 
         (r_ph,   "עסקת פניקס",
          ph_count, None,

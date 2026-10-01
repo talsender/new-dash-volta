@@ -4,6 +4,9 @@ from modules.calculator import (
     calculate_meetings_per_hour,
     calculate_idle_pct,
     calculate_answer_rate,
+    calculate_work_days_factor,
+    count_work_days,
+    attendance_coverage,
     calculate_center_rate,
 )
 
@@ -71,6 +74,23 @@ def test_answer_rate_zero_total_calls():
 
 def test_answer_rate_all_answered():
     assert calculate_answer_rate(940, 940) == 1.0
+
+# ── Work-days factor ──────────────────────────────
+def test_work_days_factor_half_month():
+    assert calculate_work_days_factor(11, 22) == pytest.approx(0.5)
+
+def test_work_days_factor_full_month_is_one():
+    assert calculate_work_days_factor(22, 22) == 1.0
+
+def test_work_days_factor_caps_at_one():
+    """More days than the month holds must not pay more than 100%."""
+    assert calculate_work_days_factor(25, 22) == 1.0
+
+def test_work_days_factor_zero_days_worked():
+    assert calculate_work_days_factor(0, 22) == 0.0
+
+def test_work_days_factor_unknown_month_length_assumes_full():
+    assert calculate_work_days_factor(11, 0) == 1.0
 
 # ── Center rate ───────────────────────────────────────────
 def test_center_rate_combines_agents():
@@ -168,3 +188,92 @@ def test_calculate_manager_bonus_tier_b():
 
 def test_calculate_manager_bonus_tier_c():
     assert calculate_manager_bonus(0.75, _settings()) == 1200
+
+
+# ── Work-days proration of the bonus ────────────────────────
+
+def _bonus_kpi():
+    return {"meetings": 80, "individual_rate": 1.1, "occupancy_pct": 0.36,
+            "idle_pct": 0.015, "feedback_score": 8.52, "phoenix": 3}
+
+
+def test_agent_bonus_default_factor_reproduces_todays_numbers():
+    """Safety property: an untouched call must be identical to passing factor 1.0."""
+    plain    = calculate_agent_bonus(_bonus_kpi(), True, _settings())
+    explicit = calculate_agent_bonus(_bonus_kpi(), True, _settings(), work_days_factor=1.0)
+    assert plain == explicit
+    assert plain["total"] == 1230
+
+
+def test_agent_bonus_prorates_only_the_fixed_sum_components():
+    r = calculate_agent_bonus(_bonus_kpi(), True, _settings(), work_days_factor=0.5)
+    # per-unit components already scale with output — must not be cut twice
+    assert r["meetings_bonus"] == 480
+    assert r["phoenix_bonus"]  == 150
+    # fixed monthly sums — halved
+    assert r["occupancy_bonus"] == 150
+    assert r["idle_bonus"]      == 75
+    assert r["feedback_bonus"]  == 75
+    assert r["total"] == 480 + 150 + 150 + 75 + 75
+
+
+def test_agent_bonus_rounds_prorated_amounts_to_whole_shekels():
+    """7/22 of the 300 ₪ tier is 95.45 → 95; of the 150 ₪ tier 47.7 → 48."""
+    r = calculate_agent_bonus(_bonus_kpi(), True, _settings(), work_days_factor=7 / 22)
+    assert r["occupancy_bonus"] == 95
+    assert r["idle_bonus"]      == 48
+    assert r["feedback_bonus"]  == 48
+
+
+def test_agent_bonus_zero_days_pays_no_fixed_bonuses():
+    r = calculate_agent_bonus(_bonus_kpi(), True, _settings(), work_days_factor=0.0)
+    assert (r["occupancy_bonus"], r["idle_bonus"], r["feedback_bonus"]) == (0, 0, 0)
+    assert r["meetings_bonus"] == 480
+
+
+def test_agent_bonus_exposes_center_target_bonus_separately():
+    """The team bonus stays folded into meetings_bonus, and is also reported on its own."""
+    r = calculate_agent_bonus(_bonus_kpi(), True, _settings())
+    assert r["center_bonus"]   == 80     # 80 meetings × 1 ₪
+    assert r["meetings_bonus"] == 480    # unchanged — includes it
+
+
+def test_agent_bonus_center_target_bonus_zero_when_center_misses():
+    r = calculate_agent_bonus(_bonus_kpi(), False, _settings())
+    assert r["center_bonus"]   == 0
+    assert r["meetings_bonus"] == 400
+
+
+# ── Work days detected from the attendance file ────────────────
+
+def test_count_work_days_ignores_days_with_no_hours():
+    df = _df([
+        {'מספר עובד': 96186, 'סה"כ כללי': 8.0},
+        {'מספר עובד': 96186, 'סה"כ כללי': 0.0},
+        {'מספר עובד': 96186, 'סה"כ כללי': 7.5},
+        {'מספר עובד': 98752, 'סה"כ כללי': 8.0},
+    ])
+    assert count_work_days(df, 96186) == 2
+
+
+def test_count_work_days_unknown_employee_is_zero():
+    df = _df([{'מספר עובד': 96186, 'סה"כ כללי': 8.0}])
+    assert count_work_days(df, 99999) == 0
+
+
+def test_attendance_coverage_reports_distinct_dates_and_range():
+    df = _df([
+        {'מספר עובד': 1, 'סה"כ כללי': 8.0, 'תאריך': pd.Timestamp('2026-09-01')},
+        {'מספר עובד': 2, 'סה"כ כללי': 8.0, 'תאריך': pd.Timestamp('2026-09-01')},
+        {'מספר עובד': 1, 'סה"כ כללי': 7.0, 'תאריך': pd.Timestamp('2026-09-03')},
+    ])
+    first, last, days = attendance_coverage(df)
+    assert days == 2
+    assert (first.day, first.month) == (1, 9)
+    assert (last.day, last.month) == (3, 9)
+
+
+def test_attendance_coverage_without_date_column():
+    """The parser does not guarantee a date column — the hint must degrade, not crash."""
+    df = _df([{'מספר עובד': 1, 'סה"כ כללי': 8.0}])
+    assert attendance_coverage(df) == (None, None, 0)
