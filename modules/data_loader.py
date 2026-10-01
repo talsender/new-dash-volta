@@ -130,9 +130,17 @@ def parse_voicenter(filepath: str) -> pd.DataFrame:
     if occ_col is None:
         raise KeyError(f"לא נמצאה עמודת תעסוקה. עמודות: {list(df.columns)}")
     df = df.rename(columns={occ_col: 'אחוז תעסוקה נטו'})
-    df['אחוז תעסוקה נטו'] = (df['אחוז תעסוקה נטו'].astype(str)
-                              .str.replace('%', '', regex=False).str.strip()
-                              .pipe(pd.to_numeric, errors='coerce') / 100)
+    # "58%" and a bare 58 both mean 58 percent, but Excel stores a percent-formatted
+    # cell as the fraction 0.58 — dividing that again turns 58% into 0.6%.
+    # One export carries one format, so decide per column, not per cell: anything
+    # above 1.5 can only be a percent number, which leaves a genuine 102% (1.02)
+    # readable instead of collapsing it to 1%.
+    _occ = df['אחוז תעסוקה נטו'].astype(str).str.strip()
+    _has_pct = _occ.str.contains('%', regex=False)
+    _num = pd.to_numeric(_occ.str.replace('%', '', regex=False).str.strip(),
+                         errors='coerce')
+    _percent_numbers = _has_pct | (_num.max(skipna=True) > 1.5)
+    df['אחוז תעסוקה נטו'] = (_num / 100).where(_percent_numbers, _num)
 
     answered_col = next((c for c in df.columns if c == 'נענו' or ('נענו' in c and 'לא' not in c)), None)
     if answered_col:

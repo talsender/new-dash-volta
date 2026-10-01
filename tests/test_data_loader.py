@@ -185,3 +185,61 @@ def test_parse_voicenter_unreadable_file_says_what_it_got():
         assert "PDF" in str(err.value)
     finally:
         os.unlink(path)
+
+
+# ── occupancy arrives in three different shapes ──────────────────
+
+def _vc_xlsx(occupancy):
+    import openpyxl
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.append(_VC_HEADERS)
+    ws.append(['דיוד זיו', 1263, 733, 530, occupancy])
+    with tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False) as f:
+        path = f.name
+    wb.save(path)
+    return path
+
+
+def test_occupancy_from_excel_percent_cell_is_not_divided_twice():
+    """Excel stores a percent-formatted cell as the fraction 0.58, not '58%'."""
+    path = _vc_xlsx(0.58)
+    try:
+        assert parse_voicenter(path).iloc[0]['אחוז תעסוקה נטו'] == pytest.approx(0.58)
+    finally:
+        os.unlink(path)
+
+
+def test_occupancy_from_a_plain_number_is_read_as_percent():
+    path = _vc_xlsx(58)
+    try:
+        assert parse_voicenter(path).iloc[0]['אחוז תעסוקה נטו'] == pytest.approx(0.58)
+    finally:
+        os.unlink(path)
+
+
+def test_occupancy_written_as_text_with_a_percent_sign():
+    path = _vc_xlsx("58%")
+    try:
+        assert parse_voicenter(path).iloc[0]['אחוז תעסוקה נטו'] == pytest.approx(0.58)
+    finally:
+        os.unlink(path)
+
+
+def test_occupancy_above_100_percent_survives_the_excel_round_trip():
+    """Real data has an agent at 102%. As an Excel fraction that is 1.02 —
+    it must not be mistaken for 1%, which a per-cell 'is it above 1' rule would do."""
+    import openpyxl
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.append(_VC_HEADERS)
+    for name, occ in [("א", 0.33), ("ב", 0.49), ("ג", 1.02)]:
+        ws.append([name, 1263, 733, 530, occ])
+    with tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False) as f:
+        path = f.name
+    wb.save(path)
+    try:
+        got = list(parse_voicenter(path)['אחוז תעסוקה נטו'])
+        assert got == pytest.approx([0.33, 0.49, 1.02])
+    finally:
+        os.unlink(path)
