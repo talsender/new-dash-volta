@@ -125,7 +125,7 @@ def render():
                 res = compute_month(att_file, vc_file, fb_file, manual, agents,
                                     settings, month_label)
             except Exception as e:
-                st.error(f"שגיאה בקריאת קבצים: {e}")
+                st.error(f"שגיאה בחישוב הבונוסים: {e}")
                 return
 
             st.session_state[_SS_KEY] = res

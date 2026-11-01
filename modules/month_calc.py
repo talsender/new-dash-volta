@@ -56,6 +56,28 @@ def _get_feedback(scores: dict, agent_name: str, feedback_name: str = None):
     return entry.get('score') if isinstance(entry, dict) else entry
 
 
+def _to_float(value, default: float = 0.0, with_status: bool = False):
+    """Read a report cell as a number, never raising on a blank or junk value.
+
+    A single unreadable cell used to abort the whole month with a bare
+    "could not convert string to float". With with_status the caller also
+    learns whether the value was usable, so the agent can be flagged instead
+    of silently paid on a zero.
+    """
+    try:
+        num = float(str(value).replace(",", "").strip())
+        ok = num == num          # NaN fails this
+    except (TypeError, ValueError):
+        num, ok = default, False
+    if not ok:
+        num = default
+    return (num, ok) if with_status else num
+
+
+def _to_int(value, default: int = 0) -> int:
+    return int(_to_float(value, default))
+
+
 def days_in_month(month_label: str) -> int:
     """Calendar days in the month the label names, falling back to 30."""
     try:
@@ -122,9 +144,19 @@ def compute_month(att_file, vc_file, fb_file, manual, agents, settings, month_la
     vc_path  = _save_upload(vc_file, '.xls')
     fb_path  = _save_upload(fb_file, '.xlsx') if fb_file else None
     try:
-        att_df          = parse_attendance(att_path)
-        vc_df           = parse_voicenter(vc_path)
-        feedback_scores = parse_feedback(fb_path) if fb_path else {}
+        # name the file in the message — "could not read files" sent us hunting
+        try:
+            att_df = parse_attendance(att_path)
+        except Exception as exc:
+            raise ValueError(f"קובץ הנוכחות לא נקרא — {exc}") from exc
+        try:
+            vc_df = parse_voicenter(vc_path)
+        except Exception as exc:
+            raise ValueError(f"קובץ Voicenter לא נקרא — {exc}") from exc
+        try:
+            feedback_scores = parse_feedback(fb_path) if fb_path else {}
+        except Exception as exc:
+            raise ValueError(f"קובץ המשובים לא נקרא — {exc}") from exc
     finally:
         for p in [att_path, vc_path, fb_path]:
             if p:
@@ -142,10 +174,15 @@ def compute_month(att_file, vc_file, fb_file, manual, agents, settings, month_la
         if not len(vc_row):
             first_name = agent['name'].split()[0]
             vc_row = vc_df[vc_df['משתמש'].str.contains(first_name, na=False, regex=False)]
-        answered    = int(vc_row['נענו'].iloc[0])              if len(vc_row) else 0
-        total_calls = int(vc_row['כניסות'].iloc[0])           if len(vc_row) else 0
-        occ_pct     = float(vc_row['אחוז תעסוקה נטו'].iloc[0]) if len(vc_row) else 0.0
-        has_vc      = bool(len(vc_row))
+        if len(vc_row):
+            answered        = _to_int(vc_row['נענו'].iloc[0])
+            total_calls     = _to_int(vc_row['כניסות'].iloc[0])
+            occ_pct, occ_ok = _to_float(vc_row['אחוז תעסוקה נטו'].iloc[0], with_status=True)
+            # a row whose numbers are all unreadable is no better than no row
+            has_vc = occ_ok or answered > 0 or total_calls > 0
+        else:
+            answered, total_calls, occ_pct = 0, 0, 0.0
+            has_vc = False
         # untouched dates mean the whole month — never prorate what was not asked for
         role_start  = inp.get("role_start")
         role_end    = inp.get("role_end")
