@@ -166,9 +166,12 @@ def render():
     c_a.metric("קצב מוקד", f"{center_rate:.2f}/שעה",
                delta="עמד ביעד" if center_meets else "לא עמד")
     c_b.metric("בונוס מנהל", f"₪{manager_bonus:,}")
+    # the metric sits beside the money it earns, so the table explains itself
+    _cpd = {k["name"]: k.get("calls_per_day", 0) for k in kpi_data}
     st.dataframe(
         [{
             "נציג": b["name"], "תיאומים ₪": b["meetings_bonus"],
+            "שיחות ליום": f"{_cpd.get(b['name'], 0):.1f}",
             "שיחות ₪": b.get("calls_bonus", 0), "סרק ₪": b["idle_bonus"],
             "משוב ₪": b["feedback_bonus"], "פניקס ₪": b["phoenix_bonus"],
             "סה\"כ ₪": b["total"],
