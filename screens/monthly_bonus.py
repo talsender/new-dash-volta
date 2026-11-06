@@ -190,7 +190,9 @@ def render():
         _pro = "—" if _f >= 1.0 else f"×{_f:.2f}"
         with st.expander(f"{k['name']}  —  סה\"כ ₪{b['total']:,}", key=f"exp_{k['agent_id']}"):
             c1, c2, c3, c4, c5, c6, c7, c8, c9 = st.columns(9)
-            c1.metric("שעות",         f"{k['hours']:.1f}")
+            c1.metric("שעות נטו",     f"{k['hours']:.1f}",
+                      help=f"ברוטו (כולל הפסקות): {k.get('gross_hours', k['hours']):.1f} — "
+                           "לפיהן מחושבות השיחות לשעה")
             c2.metric("תיאומים",      k["meetings"])
             c3.metric("תיאומים/שעה",  f"{k['meetings_per_hour']:.2f}")
             c4.metric("תעסוקה",       f"{k['occupancy_pct']*100:.1f}%")

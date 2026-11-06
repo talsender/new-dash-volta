@@ -117,7 +117,8 @@ def render():
     )
     st.dataframe(
         [{
-            "נציג": k["name"], "שעות": f"{k['hours']:.1f}", "תיאומים": k["meetings"],
+            "נציג": k["name"], "שעות נטו": f"{k['hours']:.1f}",
+            "שעות ברוטו": f"{k.get('gross_hours', k['hours']):.1f}", "תיאומים": k["meetings"],
             "פגישות/שעה": f"{k['meetings_per_hour']:.2f}",
             "תעסוקה": f"{k['occupancy_pct']*100:.1f}%",
             "סרק": f"{k['idle_pct']*100:.2f}%", "פניקס": k["phoenix"],

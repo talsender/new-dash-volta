@@ -260,3 +260,32 @@ def test_weekly_sheet_carries_both_call_rates():
         assert ws.cell(hdr + 1, col).value == pytest.approx(51.3)
     finally:
         os.unlink(path)
+
+
+def test_agent_sheet_each_rate_divides_by_its_own_hours():
+    """Meetings are paid on hours net of the break; calls are measured against
+    the clock. One hours row cannot serve both without one of them being wrong."""
+    import re
+    kpi = {**_kpi()[0], "hours": 59.9, "gross_hours": 67.9, "meetings": 80,
+           "total_calls": 318, "calls_per_hour": 318 / 67.9, "role_days": 30}
+    with tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False) as f:
+        path = f.name
+    try:
+        export_agent_bonus(kpi, _bonus()[0], "יוני 2026", path)
+        ws = openpyxl.load_workbook(path)['בונוס אישי']
+        label = {r: str(ws.cell(r, 1).value) for r in range(1, ws.max_row + 1)}
+        row = {l: r for r, l in label.items()}
+
+        assert "שעות נטו" in row, "the net hours row is missing"
+        assert "שעות ברוטו" in row, "the gross hours row is missing"
+        assert ws.cell(row["שעות נטו"], 2).value == pytest.approx(59.9)
+        assert ws.cell(row["שעות ברוטו"], 2).value == pytest.approx(67.9)
+
+        mph = str(ws.cell(row["תיאומים לשעה"], 2).value)
+        cph = str(ws.cell(row["שיחות לשעה"], 2).value)
+        assert f"B{row['שעות נטו']}" in mph, "meetings must use net hours"
+        assert f"B{row['שעות ברוטו']}" in cph, "calls must use gross hours"
+        assert f"B{row['שעות ברוטו']}" not in mph
+        assert f"B{row['שעות נטו']}" not in cph
+    finally:
+        os.unlink(path)
