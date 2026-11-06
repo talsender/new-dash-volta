@@ -196,7 +196,7 @@ def render():
             c4.metric("תעסוקה",       f"{k['occupancy_pct']*100:.1f}%")
             c5.metric("סרק",          f"{k['idle_pct']*100:.2f}%")
             c6.metric('סה"כ שיחות',   k.get("total_calls", k.get("answered_calls", 0)))
-            c7.metric("% מענה",       f"{k.get('answer_rate', 0)*100:.1f}%")
+            c7.metric("אחוז מענה",       f"{k.get('answer_rate', 0)*100:.1f}%")
             c8.metric("ימים בתפקיד",   f"{k.get('role_days', '—')}")
             c9.metric("שיחות ליום",    f"{k.get('calls_per_day', 0):.1f}")
             st.dataframe(

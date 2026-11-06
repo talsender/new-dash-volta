@@ -119,7 +119,7 @@ def render():
             "תעסוקה": f"{k['occupancy_pct']*100:.1f}%",
             "סרק": f"{k['idle_pct']*100:.2f}%", "פניקס": k["phoenix"],
             'סה"כ שיחות': k.get("total_calls", k.get("answered_calls", 0)),
-            "% מענה": f"{k.get('answer_rate', 0)*100:.1f}%",
+            "אחוז מענה": f"{k.get('answer_rate', 0)*100:.1f}%",
             "שיחות ליום": f"{k.get('calls_per_day', 0):.1f}",
         } for k in kpi_data],
         use_container_width=True,

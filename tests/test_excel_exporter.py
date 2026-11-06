@@ -76,7 +76,7 @@ def test_weekly_sheet_has_answer_rate_column():
     try:
         export_weekly_kpi(_kpi(), path)
         ws = openpyxl.load_workbook(path)['KPI שבועי']
-        hdr_row, col = _col_of(ws, '% מענה')
+        hdr_row, col = _col_of(ws, 'אחוז מענה')
         assert ws.cell(hdr_row + 1, col).value == pytest.approx(1066 / 1240)
         assert ws.cell(hdr_row + 1, col).number_format == "0.0%"
     finally:
@@ -92,7 +92,7 @@ def test_weekly_summary_row_answer_rate_is_volume_weighted():
     try:
         export_weekly_kpi(two, path)
         ws = openpyxl.load_workbook(path)['KPI שבועי']
-        hdr_row, col = _col_of(ws, '% מענה')
+        hdr_row, col = _col_of(ws, 'אחוז מענה')
         summary = ws.cell(hdr_row + 3, col).value
         assert summary == pytest.approx((1066 + 668) / (1240 + 940))
     finally:
@@ -106,7 +106,7 @@ def test_monthly_bonus_sheet_has_answer_rate_column():
         export_monthly_bonus(_bonus(), _billing(), "יוני 2026", path,
                              kpi_data=_kpi())
         ws = openpyxl.load_workbook(path)['פירוט בונוסים']
-        assert '% מענה' in _headers(ws)
+        assert 'אחוז מענה' in _headers(ws)
     finally:
         os.unlink(path)
 
@@ -138,7 +138,7 @@ def test_history_summary_has_answer_rate_column():
     try:
         export_history_summary(history, path)
         ws = openpyxl.load_workbook(path)['סיכום חודשי']
-        hdr_row, col = _col_of(ws, '% מענה')
+        hdr_row, col = _col_of(ws, 'אחוז מענה')
         assert ws.cell(hdr_row + 1, col).value == pytest.approx(1066 / 1240)
     finally:
         os.unlink(path)
@@ -160,7 +160,7 @@ def test_history_summary_legacy_month_shows_dash():
     try:
         export_history_summary([_hist_row("יוני 2026", 4000)], path)
         ws = openpyxl.load_workbook(path)['סיכום חודשי']
-        hdr_row, col = _col_of(ws, '% מענה')
+        hdr_row, col = _col_of(ws, 'אחוז מענה')
         assert ws.cell(hdr_row + 1, col).value == "—"
     finally:
         os.unlink(path)
@@ -175,7 +175,7 @@ def test_history_summary_total_ignores_months_without_answer_rate():
     try:
         export_history_summary(history, path)
         ws = openpyxl.load_workbook(path)['סיכום חודשי']
-        hdr_row, col = _col_of(ws, '% מענה')
+        hdr_row, col = _col_of(ws, 'אחוז מענה')
         assert ws.cell(hdr_row + 3, col).value == pytest.approx(3869 / 4830)
     finally:
         os.unlink(path)

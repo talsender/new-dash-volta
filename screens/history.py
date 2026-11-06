@@ -152,7 +152,7 @@ def render():
         "תיאומים/שעה":   f"{h.get('center_rate', 0):.2f}",
         "שיחות סרק":     h.get("total_idle_calls", "—"),
         'סה"כ שיחות':    h.get("total_calls", h.get("total_answered_calls", "—")),
-        "% מענה":        (f"{h['answer_rate']*100:.1f}%"
+        "אחוז מענה":        (f"{h['answer_rate']*100:.1f}%"
                           if isinstance(h.get("answer_rate"), (int, float)) else "—"),
         "פניקס":         h.get("total_phoenix", "—"),
     } for h in history]
