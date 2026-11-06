@@ -18,9 +18,11 @@ def _table(headers, rows):
 
 def build_weekly_management_email(kpi_data: list, week_label: str) -> str:
     rows = [[a['name'], f"{a['hours']:.1f}", a['meetings'],
-             f"{a['meetings_per_hour']:.2f}", f"{a['occupancy_pct']*100:.1f}%",
+             f"{a['meetings_per_hour']:.2f}", f"{a.get('calls_per_day', 0):.1f}",
+             f"{a['occupancy_pct']*100:.1f}%",
              f"{a['idle_pct']*100:.2f}%", a['phoenix']] for a in kpi_data]
-    table = _table(['נציג','שעות','תיאומים','פגישות/שעה','תעסוקה','סרק','פניקס'], rows)
+    table = _table(['נציג','שעות','תיאומים','פגישות/שעה','שיחות ליום','תעסוקה','סרק','פניקס'],
+                   rows)
     return _WRAP.format(f'<h2>דוח KPI שבועי — {_html.escape(week_label)}</h2>{table}')
 
 
@@ -28,7 +30,7 @@ def build_weekly_agent_email(agent_kpi: dict, agent_name: str, week_label: str) 
     a = agent_kpi
     rows = [['שעות', f"{a['hours']:.1f}"], ['תיאומים', a['meetings']],
             ['פגישות/שעה', f"{a['meetings_per_hour']:.2f}"],
-            ['תעסוקה', f"{a['occupancy_pct']*100:.1f}%"],
+            ['שיחות ליום', f"{a.get('calls_per_day', 0):.1f}"],
             ['סרק', f"{a['idle_pct']*100:.2f}%"], ['פניקס', a['phoenix']]]
     table = _table(['מדד', 'ערך'], rows)
     return _WRAP.format(f'<h2>שלום {_html.escape(agent_name)},</h2><p>דוח ביצועים — {_html.escape(week_label)}</p>{table}')
@@ -45,7 +47,7 @@ def build_monthly_agent_email(agent_kpi: dict, agent_bonus: dict,
                                agent_name: str, month_label: str) -> str:
     b = agent_bonus
     rows = [['תיאומים', f"₪{b['meetings_bonus']:,}"],
-            ['תעסוקה', f"₪{b['occupancy_bonus']:,}"],
+            ['שיחות', f"₪{b.get('calls_bonus', 0):,}"],
             ['סרק', f"₪{b['idle_bonus']:,}"],
             ['משוב', f"₪{b['feedback_bonus']:,}"],
             ['פניקס', f"₪{b['phoenix_bonus']:,}"],

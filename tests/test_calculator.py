@@ -86,7 +86,6 @@ def test_center_rate_excludes_zero_hour_agents():
 # ── Task 7: Bonus components ──────────────────────────────
 from modules.calculator import (
     calculate_meetings_bonus,
-    calculate_occupancy_bonus,
     calculate_idle_bonus,
     calculate_feedback_bonus,
 )
@@ -102,17 +101,6 @@ def test_meetings_bonus_below_target_center_meets():
 
 def test_meetings_bonus_below_target_center_misses():
     assert calculate_meetings_bonus(80, 0.9, False) == 320  # 4×80
-
-def test_occupancy_tier_a():
-    assert calculate_occupancy_bonus(0.36) == 300
-def test_occupancy_tier_a_boundary():
-    assert calculate_occupancy_bonus(0.35) == 300
-def test_occupancy_tier_b():
-    assert calculate_occupancy_bonus(0.31) == 200
-def test_occupancy_tier_b_boundary():
-    assert calculate_occupancy_bonus(0.30) == 200
-def test_occupancy_none():
-    assert calculate_occupancy_bonus(0.29) == 0
 
 def test_idle_tier_a():
     assert calculate_idle_bonus(0.01) == 150
@@ -144,6 +132,10 @@ from modules.calculator import calculate_agent_bonus, calculate_manager_bonus
 
 def _settings():
     return {"bonus_thresholds": {
+        "standard_day_hours": 9,
+        "calls_per_day_tier_a": 60, "calls_per_day_tier_a_bonus": 300,
+        "calls_per_day_tier_b": 55, "calls_per_day_tier_b_bonus": 200,
+        "calls_per_day_tier_c": 50, "calls_per_day_tier_c_bonus": 100,
         "phoenix_employee_rate": 50, "phoenix_client_rate": 100,
         "manager_bonus_a_rate": 1.0, "manager_bonus_a": 2000,
         "manager_bonus_b_rate": 0.8, "manager_bonus_b": 1600,
@@ -152,10 +144,11 @@ def _settings():
 
 def test_calculate_agent_bonus_full():
     kpi = {"meetings": 80, "individual_rate": 1.1, "occupancy_pct": 0.36,
-           "idle_pct": 0.015, "feedback_score": 8.52, "phoenix": 3}
+           "idle_pct": 0.015, "feedback_score": 8.52, "phoenix": 3,
+           "calls_per_day": 60}
     result = calculate_agent_bonus(kpi, center_meets=True, settings=_settings())
     assert result["meetings_bonus"] == 480    # (5+1)×80
-    assert result["occupancy_bonus"] == 300
+    assert result["calls_bonus"] == 300
     assert result["idle_bonus"] == 150
     assert result["feedback_bonus"] == 150
     assert result["phoenix_bonus"] == 150    # 3×50
@@ -175,24 +168,25 @@ def test_calculate_manager_bonus_tier_c():
 
 def _bonus_kpi():
     return {"meetings": 80, "individual_rate": 1.1, "occupancy_pct": 0.36,
+            "calls_per_day": 60,
             "idle_pct": 0.015, "feedback_score": 8.52, "phoenix": 3}
 
 
 def test_agent_bonus_default_factor_reproduces_todays_numbers():
     """Safety property: an untouched call must be identical to passing factor 1.0."""
     plain    = calculate_agent_bonus(_bonus_kpi(), True, _settings())
-    explicit = calculate_agent_bonus(_bonus_kpi(), True, _settings(), work_days_factor=1.0)
+    explicit = calculate_agent_bonus(_bonus_kpi(), True, _settings(), role_factor=1.0)
     assert plain == explicit
     assert plain["total"] == 1230
 
 
 def test_agent_bonus_prorates_only_the_fixed_sum_components():
-    r = calculate_agent_bonus(_bonus_kpi(), True, _settings(), work_days_factor=0.5)
+    r = calculate_agent_bonus(_bonus_kpi(), True, _settings(), role_factor=0.5)
     # per-unit components already scale with output — must not be cut twice
     assert r["meetings_bonus"] == 480
     assert r["phoenix_bonus"]  == 150
     # fixed monthly sums — halved
-    assert r["occupancy_bonus"] == 150
+    assert r["calls_bonus"] == 150
     assert r["idle_bonus"]      == 75
     assert r["feedback_bonus"]  == 75
     assert r["total"] == 480 + 150 + 150 + 75 + 75
@@ -200,15 +194,15 @@ def test_agent_bonus_prorates_only_the_fixed_sum_components():
 
 def test_agent_bonus_rounds_prorated_amounts_to_whole_shekels():
     """7/22 of the 300 ₪ tier is 95.45 → 95; of the 150 ₪ tier 47.7 → 48."""
-    r = calculate_agent_bonus(_bonus_kpi(), True, _settings(), work_days_factor=7 / 22)
-    assert r["occupancy_bonus"] == 95
+    r = calculate_agent_bonus(_bonus_kpi(), True, _settings(), role_factor=7 / 22)
+    assert r["calls_bonus"] == 95
     assert r["idle_bonus"]      == 48
     assert r["feedback_bonus"]  == 48
 
 
 def test_agent_bonus_zero_days_pays_no_fixed_bonuses():
-    r = calculate_agent_bonus(_bonus_kpi(), True, _settings(), work_days_factor=0.0)
-    assert (r["occupancy_bonus"], r["idle_bonus"], r["feedback_bonus"]) == (0, 0, 0)
+    r = calculate_agent_bonus(_bonus_kpi(), True, _settings(), role_factor=0.0)
+    assert (r["calls_bonus"], r["idle_bonus"], r["feedback_bonus"]) == (0, 0, 0)
     assert r["meetings_bonus"] == 480
 
 

@@ -5,6 +5,7 @@ from modules.data_loader import parse_attendance, parse_voicenter, parse_feedbac
 from modules.calculator import (calculate_work_hours, calculate_meetings_per_hour,
                                  calculate_idle_pct, calculate_answer_rate,
                                  calculate_role_factor,
+                                 calculate_calls_per_hour, calls_per_standard_day,
                                  calculate_center_rate,
                                  calculate_agent_bonus, calculate_manager_bonus)
 
@@ -139,6 +140,7 @@ def compute_month(att_file, vc_file, fb_file, manual, agents, settings, month_la
     """
     t = settings["bonus_thresholds"]
     month_days = days_in_month(month_label)
+    std_day    = t.get("standard_day_hours", 9)
 
     att_path = _save_upload(att_file, '.xlsx')
     vc_path  = _save_upload(vc_file, '.xls')
@@ -200,6 +202,9 @@ def compute_month(att_file, vc_file, fb_file, manual, agents, settings, month_la
             "answered_calls": answered,
             "total_calls":    total_calls,
             "answer_rate": calculate_answer_rate(answered, total_calls),
+            "calls_per_hour": calculate_calls_per_hour(total_calls, hours),
+            "calls_per_day": calls_per_standard_day(
+                calculate_calls_per_hour(total_calls, hours), std_day),
             "idle_pct": calculate_idle_pct(inp["idle_calls"], answered),
             "phoenix": inp["phoenix"],
             "feedback_score": _get_feedback(feedback_scores, agent["name"],
@@ -215,9 +220,10 @@ def compute_month(att_file, vc_file, fb_file, manual, agents, settings, month_la
     for k in kpi_data:
         kpi_in = {"meetings": k["meetings"], "individual_rate": k["meetings_per_hour"],
                   "occupancy_pct": k["occupancy_pct"], "idle_pct": k["idle_pct"],
+                  "calls_per_day": k.get("calls_per_day", 0.0),
                   "feedback_score": k["feedback_score"], "phoenix": k["phoenix"]}
         b = calculate_agent_bonus(kpi_in, center_meets, settings,
-                                  work_days_factor=k.get("role_factor", 1.0))
+                                  role_factor=k.get("role_factor", 1.0))
         bonus_data.append({"name": k["name"], "employee_id": k["employee_id"],
                            "role_days": k.get("role_days", month_days), **b})
 
@@ -279,6 +285,7 @@ def build_snapshot(res, month_label):
             "meetings_per_hour": k["meetings_per_hour"],
             "occupancy_pct":     k["occupancy_pct"],
             "idle_pct":          k["idle_pct"],
+            "calls_per_day":     k.get("calls_per_day", 0.0),
             "role_days":         k.get("role_days", k.get("work_days", month_days)),
             "role_factor":       k.get("role_factor", k.get("work_days_factor", 1.0)),
             "answer_rate":       calculate_answer_rate(

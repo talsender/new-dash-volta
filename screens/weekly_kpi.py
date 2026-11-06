@@ -4,6 +4,7 @@ import tempfile, os
 from modules.data_loader import parse_attendance, parse_voicenter
 from modules.calculator import (calculate_work_hours, calculate_meetings_per_hour,
                                  calculate_idle_pct, calculate_answer_rate,
+                                 calculate_calls_per_hour, calls_per_standard_day,
                                  calculate_center_rate)
 from modules.config_manager import load_agents, load_settings
 from modules.email_builder import build_weekly_management_email, build_weekly_agent_email
@@ -95,6 +96,10 @@ def render():
             "answered_calls": answered,
             "total_calls":    total_calls,
             "answer_rate":    calculate_answer_rate(answered, total_calls),
+            "calls_per_hour": calculate_calls_per_hour(total_calls, hours),
+            "calls_per_day":  calls_per_standard_day(
+                calculate_calls_per_hour(total_calls, hours),
+                settings["bonus_thresholds"].get("standard_day_hours", 9)),
             "phoenix": inp["phoenix"],
         })
 
@@ -115,6 +120,7 @@ def render():
             "סרק": f"{k['idle_pct']*100:.2f}%", "פניקס": k["phoenix"],
             'סה"כ שיחות': k.get("total_calls", k.get("answered_calls", 0)),
             "% מענה": f"{k.get('answer_rate', 0)*100:.1f}%",
+            "שיחות ליום": f"{k.get('calls_per_day', 0):.1f}",
         } for k in kpi_data],
         use_container_width=True,
     )

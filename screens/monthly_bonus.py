@@ -169,7 +169,7 @@ def render():
     st.dataframe(
         [{
             "נציג": b["name"], "תיאומים ₪": b["meetings_bonus"],
-            "תעסוקה ₪": b["occupancy_bonus"], "סרק ₪": b["idle_bonus"],
+            "שיחות ₪": b.get("calls_bonus", 0), "סרק ₪": b["idle_bonus"],
             "משוב ₪": b["feedback_bonus"], "פניקס ₪": b["phoenix_bonus"],
             "סה\"כ ₪": b["total"],
         } for b in bonus_data],
@@ -186,7 +186,7 @@ def render():
         _f = k.get("role_factor", 1.0)
         _pro = "—" if _f >= 1.0 else f"×{_f:.2f}"
         with st.expander(f"{k['name']}  —  סה\"כ ₪{b['total']:,}", key=f"exp_{k['agent_id']}"):
-            c1, c2, c3, c4, c5, c6, c7, c8 = st.columns(8)
+            c1, c2, c3, c4, c5, c6, c7, c8, c9 = st.columns(9)
             c1.metric("שעות",         f"{k['hours']:.1f}")
             c2.metric("תיאומים",      k["meetings"])
             c3.metric("תיאומים/שעה",  f"{k['meetings_per_hour']:.2f}")
@@ -195,6 +195,7 @@ def render():
             c6.metric('סה"כ שיחות',   k.get("total_calls", k.get("answered_calls", 0)))
             c7.metric("% מענה",       f"{k.get('answer_rate', 0)*100:.1f}%")
             c8.metric("ימים בתפקיד",   f"{k.get('role_days', '—')}")
+            c9.metric("שיחות ליום",    f"{k.get('calls_per_day', 0):.1f}")
             st.dataframe(
                 [
                     {"רכיב": "עמלת תיאומים",    "₪": b["meetings_bonus"] - b.get("center_bonus", 0),
@@ -202,7 +203,7 @@ def render():
                     {"רכיב": "בונוס ליעד צוותי", "₪": b.get("center_bonus", 0),
                      "יחסי": "—"},
                     {"רכיב": "בונוס פניקס",      "₪": b["phoenix_bonus"], "יחסי": "—"},
-                    {"רכיב": "בונוס תעסוקה",    "₪": b["occupancy_bonus"], "יחסי": _pro},
+                    {"רכיב": "בונוס שיחות",     "₪": b.get("calls_bonus", 0), "יחסי": _pro},
                     {"רכיב": "בונוס סרק",        "₪": b["idle_bonus"],      "יחסי": _pro},
                     {"רכיב": "בונוס משוב",       "₪": b["feedback_bonus"],  "יחסי": _pro},
                     {"רכיב": 'סה"כ',             "₪": b["total"], "יחסי": ""},

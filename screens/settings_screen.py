@@ -15,6 +15,19 @@ def render():
     with c1:
         t["meetings_per_hour_tier_a"] = st.number_input(
             "פגישות/שעה — סף תעריף 5₪", value=float(t["meetings_per_hour_tier_a"]), step=0.1)
+        st.caption("יעד השיחות — מה שהנציג מתוגמל עליו")
+        t["standard_day_hours"] = int(st.number_input(
+            "שעות ביום עבודה מלא", value=int(t.get("standard_day_hours", 9)), step=1,
+            help="לפיו מחושב 'שיחות ליום' מתוך שיחות לשעה"))
+        for tier, default_calls, default_bonus in (("a", 60, 300), ("b", 55, 200), ("c", 50, 100)):
+            cc1, cc2 = st.columns(2)
+            t[f"calls_per_day_tier_{tier}"] = int(cc1.number_input(
+                f"שיחות ליום — סף {tier.upper()}",
+                value=int(t.get(f"calls_per_day_tier_{tier}", default_calls)), step=1))
+            t[f"calls_per_day_tier_{tier}_bonus"] = int(cc2.number_input(
+                f"בונוס {tier.upper()} ₪",
+                value=int(t.get(f"calls_per_day_tier_{tier}_bonus", default_bonus)), step=10))
+        st.caption("ספי תעסוקה — לתצוגה ולצביעה בדוחות בלבד, לא משלמים")
         t["occupancy_tier_a_pct"] = st.number_input("תעסוקה A %", value=int(t["occupancy_tier_a_pct"]))
         t["occupancy_tier_b_pct"] = st.number_input("תעסוקה B %", value=int(t["occupancy_tier_b_pct"]))
         t["idle_tier_a_pct"] = st.number_input("סרק A % (מקסימום)", value=int(t["idle_tier_a_pct"]))
