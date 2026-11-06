@@ -221,7 +221,7 @@ def test_agent_sheet_fixed_bonus_formulas_reference_the_role_days_cell():
         ws = openpyxl.load_workbook(path)['בונוס אישי']
         labels = {ws.cell(r, 1).value: r for r in range(1, ws.max_row + 1)}
         wd_row = labels["ימים בתפקיד"]
-        for metric in ("שיחות ליום", "אחוז סרק", "ציון משוב"):
+        for metric in ("שיחות לשעה", "אחוז סרק", "ציון משוב"):
             formula = str(ws.cell(labels[metric], 4).value)
             assert f"B{wd_row}" in formula, f"{metric} bonus ignores the work-days cell"
             assert formula.startswith("=ROUND(")

@@ -133,9 +133,9 @@ from modules.calculator import calculate_agent_bonus, calculate_manager_bonus
 def _settings():
     return {"bonus_thresholds": {
         "standard_day_hours": 9,
-        "calls_per_day_tier_a": 60, "calls_per_day_tier_a_bonus": 300,
-        "calls_per_day_tier_b": 55, "calls_per_day_tier_b_bonus": 200,
-        "calls_per_day_tier_c": 50, "calls_per_day_tier_c_bonus": 100,
+        "calls_per_hour_tier_a": 6.5, "calls_per_hour_tier_a_bonus": 300,
+        "calls_per_hour_tier_b": 6.0, "calls_per_hour_tier_b_bonus": 200,
+        "calls_per_hour_tier_c": 5.5, "calls_per_hour_tier_c_bonus": 100,
         "phoenix_employee_rate": 50, "phoenix_client_rate": 100,
         "manager_bonus_a_rate": 1.0, "manager_bonus_a": 2000,
         "manager_bonus_b_rate": 0.8, "manager_bonus_b": 1600,
@@ -145,7 +145,7 @@ def _settings():
 def test_calculate_agent_bonus_full():
     kpi = {"meetings": 80, "individual_rate": 1.1, "occupancy_pct": 0.36,
            "idle_pct": 0.015, "feedback_score": 8.52, "phoenix": 3,
-           "calls_per_day": 60}
+           "calls_per_hour": 6.5}
     result = calculate_agent_bonus(kpi, center_meets=True, settings=_settings())
     assert result["meetings_bonus"] == 480    # (5+1)×80
     assert result["calls_bonus"] == 300
@@ -168,7 +168,7 @@ def test_calculate_manager_bonus_tier_c():
 
 def _bonus_kpi():
     return {"meetings": 80, "individual_rate": 1.1, "occupancy_pct": 0.36,
-            "calls_per_day": 60,
+            "calls_per_hour": 6.5,
             "idle_pct": 0.015, "feedback_score": 8.52, "phoenix": 3}
 
 

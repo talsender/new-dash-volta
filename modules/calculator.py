@@ -78,8 +78,20 @@ def calculate_meetings_bonus(meetings: int, individual_rate: float, center_meets
     return meetings * (base + extra)
 
 
+def calculate_gross_work_hours(attendance_df: pd.DataFrame, employee_id: int) -> float:
+    """Hours on the clock, breaks included.
+
+    calculate_work_hours nets off an hour a day for lunch, which is right for
+    the meetings rate and for what the client is billed. The call target is set
+    against the clock — 6.5 an hour, so 58.5 in a nine-hour day — so it needs
+    the undeducted figure.
+    """
+    emp = attendance_df[attendance_df['מספר עובד'] == employee_id]
+    return max(0.0, float(emp['סה"כ כללי'].sum()))
+
+
 def calculate_calls_per_hour(total_calls: float, hours: float) -> float:
-    """Outgoing plus incoming calls per hour worked. No hours means no rate."""
+    """Outgoing plus incoming calls per hour on the clock. No hours, no rate."""
     return 0.0 if hours <= 0 else total_calls / hours
 
 
@@ -88,12 +100,12 @@ def calls_per_standard_day(calls_per_hour: float, standard_day_hours: float = 9)
     return calls_per_hour * standard_day_hours
 
 
-def calculate_calls_bonus(calls_per_day: float, settings: dict) -> float:
-    """Tiered on calls per standard day. Tops out at what occupancy used to pay."""
+def calculate_calls_bonus(calls_per_hour: float, settings: dict) -> float:
+    """Tiered on calls per hour. Tops out at what occupancy used to pay."""
     t = settings["bonus_thresholds"]
     for tier in ("a", "b", "c"):
-        if calls_per_day >= t[f"calls_per_day_tier_{tier}"]:
-            return t[f"calls_per_day_tier_{tier}_bonus"]
+        if calls_per_hour >= t[f"calls_per_hour_tier_{tier}"]:
+            return t[f"calls_per_hour_tier_{tier}_bonus"]
     return 0
 
 
@@ -136,7 +148,7 @@ def calculate_agent_bonus(kpi: dict, center_meets: bool, settings: dict,
     t = settings["bonus_thresholds"]
     m = calculate_meetings_bonus(kpi["meetings"], kpi["individual_rate"], center_meets)
     ctr = kpi["meetings"] if center_meets else 0
-    c = round(calculate_calls_bonus(kpi.get("calls_per_day", 0), settings) * role_factor)
+    c = round(calculate_calls_bonus(kpi.get("calls_per_hour", 0), settings) * role_factor)
     i = round(calculate_idle_bonus(kpi["idle_pct"]) * role_factor)
     fb = round(calculate_feedback_bonus(kpi.get("feedback_score")) * role_factor)
     ph = kpi["phoenix"] * t["phoenix_employee_rate"]

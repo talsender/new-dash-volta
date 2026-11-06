@@ -6,6 +6,7 @@ from modules.calculator import (calculate_work_hours, calculate_meetings_per_hou
                                  calculate_idle_pct, calculate_answer_rate,
                                  calculate_role_factor,
                                  calculate_calls_per_hour, calls_per_standard_day,
+                                 calculate_gross_work_hours,
                                  calculate_center_rate,
                                  calculate_agent_bonus, calculate_manager_bonus)
 
@@ -170,6 +171,8 @@ def compute_month(att_file, vc_file, fb_file, manual, agents, settings, month_la
     kpi_data = []
     for agent in agents:
         hours   = calculate_work_hours(att_df, agent["employee_id"])
+        # the call target is set against the clock, breaks included
+        gross_hours = calculate_gross_work_hours(att_df, agent["employee_id"])
         inp     = manual[agent["id"]]
         vc_name = agent.get('voicenter_name') or agent['name']
         vc_row  = vc_df[vc_df['משתמש'].str.lower().str.contains(vc_name.lower(), na=False, regex=False)]
@@ -202,9 +205,10 @@ def compute_month(att_file, vc_file, fb_file, manual, agents, settings, month_la
             "answered_calls": answered,
             "total_calls":    total_calls,
             "answer_rate": calculate_answer_rate(answered, total_calls),
-            "calls_per_hour": calculate_calls_per_hour(total_calls, hours),
+            "gross_hours": gross_hours,
+            "calls_per_hour": calculate_calls_per_hour(total_calls, gross_hours),
             "calls_per_day": calls_per_standard_day(
-                calculate_calls_per_hour(total_calls, hours), std_day),
+                calculate_calls_per_hour(total_calls, gross_hours), std_day),
             "idle_pct": calculate_idle_pct(inp["idle_calls"], answered),
             "phoenix": inp["phoenix"],
             "feedback_score": _get_feedback(feedback_scores, agent["name"],
@@ -220,7 +224,7 @@ def compute_month(att_file, vc_file, fb_file, manual, agents, settings, month_la
     for k in kpi_data:
         kpi_in = {"meetings": k["meetings"], "individual_rate": k["meetings_per_hour"],
                   "occupancy_pct": k["occupancy_pct"], "idle_pct": k["idle_pct"],
-                  "calls_per_day": k.get("calls_per_day", 0.0),
+                  "calls_per_hour": k.get("calls_per_hour", 0.0),
                   "feedback_score": k["feedback_score"], "phoenix": k["phoenix"]}
         b = calculate_agent_bonus(kpi_in, center_meets, settings,
                                   role_factor=k.get("role_factor", 1.0))
