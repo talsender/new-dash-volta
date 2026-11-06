@@ -244,3 +244,19 @@ def test_agent_sheet_per_unit_bonus_formulas_are_not_prorated():
             assert f"B{wd_row}" not in formula, f"{metric} must not be prorated"
     finally:
         os.unlink(path)
+
+
+def test_weekly_sheet_carries_both_call_rates():
+    """The week is read per hour, like its meetings column; the target is per day."""
+    kpi = [{**_kpi()[0], "calls_per_hour": 5.7, "calls_per_day": 51.3}]
+    with tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False) as f:
+        path = f.name
+    try:
+        export_weekly_kpi(kpi, path)
+        ws = openpyxl.load_workbook(path)['KPI שבועי']
+        hdr, col = _col_of(ws, "שיחות/שעה")
+        assert ws.cell(hdr + 1, col).value == pytest.approx(5.7)
+        hdr, col = _col_of(ws, "שיחות ליום")
+        assert ws.cell(hdr + 1, col).value == pytest.approx(51.3)
+    finally:
+        os.unlink(path)

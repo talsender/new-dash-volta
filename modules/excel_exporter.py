@@ -293,7 +293,7 @@ def export_weekly_kpi(kpi_data: list, filepath: str) -> None:
 
     COLS  = ["נציג", "שעות עבודה", "תיאומים", "תיאומים/שעה",
              "תעסוקה %", "סרק %", "פניקס", 'סה"כ שיחות', "אחוז מענה",
-             "שיחות ליום"]
+             "שיחות/שעה", "שיחות ליום"]
     ncols = len(COLS)
     ds    = _init_sheet(ws, "דוח KPI שבועי", ncols,
                         meta=f"הופק: {now}  |  נציגים: {len(kpi_data)}",
@@ -324,8 +324,9 @@ def export_weekly_kpi(kpi_data: list, filepath: str) -> None:
         _cell(ws, ri, 8, a.get("total_calls", a.get("answered_calls", 0)), bg=stripe)
         _cell(ws, ri, 9, _answer_rate(a), bg=stripe, fmt="0.0%")
         cpd = a.get("calls_per_day", 0.0)
+        _cell(ws, ri, 10, a.get("calls_per_hour", 0.0), bg=stripe, fmt="0.00")
         bg, fg = _status_color(cpd, cpd_good, cpd_warn, True)
-        _cell(ws, ri, 10, cpd, bg=bg, fg=fg, fmt="0.0")
+        _cell(ws, ri, 11, cpd, bg=bg, fg=fg, fmt="0.0")
 
     n  = len(kpi_data)
     tm = sum(a["meetings"]               for a in kpi_data)
@@ -346,7 +347,8 @@ def export_weekly_kpi(kpi_data: list, filepath: str) -> None:
         (7, f"=SUM(G{ds}:G{sr-1})"),
         (8, f"=SUM(H{ds}:H{sr-1})"),
         (9, calculate_answer_rate(tans, ta), "0.0%"),
-        (10, f"=AVERAGE(J{ds}:J{sr-1})", "0.0"),
+        (10, f"=AVERAGE(J{ds}:J{sr-1})", "0.00"),
+        (11, f"=AVERAGE(K{ds}:K{sr-1})", "0.0"),
     ])
     for col, col_letter, avg_val, fmt, bg, fg in [
         (5, "E", avg_occ,  "0.0%",  *_status_color(avg_occ,  occ_good,  occ_warn,  True)),
@@ -357,7 +359,8 @@ def export_weekly_kpi(kpi_data: list, filepath: str) -> None:
         c.border = _B_SUM; c.alignment = _CTR; c.number_format = fmt
 
     _autofit(ws, {"A": 22, "B": 16, "C": 14, "D": 16,
-                  "E": 14, "F": 14, "G": 12, "H": 16, "I": 12, "J": 13})
+                  "E": 14, "F": 14, "G": 12, "H": 16, "I": 12, "J": 12,
+                  "K": 13})
     _print_setup(ws)
     wb.save(filepath)
 
